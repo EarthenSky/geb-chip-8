@@ -10,14 +10,13 @@ We'll be writing the interpreter in C++20, using SDL3 to render the screen.
 
 ## memory
 
-In Chip-8, the interpreter, program, and general memory all share the same address space. There are 4096 bytes of addressable memory, the first 512 of which were reserved for the interpreter. Thus, we can simply allocate memory for this many bytes. As an added bonus, the whole thing fits in the L1 cache of decades old processors!
+In Chip-8, the interpreter, program, and general memory all share the same address space. There are 4096 bytes of addressable memory, the first 512 of which were reserved for the interpreter. As an added bonus, the whole thing fits in the L1 cache of decades old processors!
 
 ```cpp
-std::array<uint8_t, (4096 - 512)> memory;
+std::array<uint8_t, 4096> memory;
 ```
 
 When we want to run a Chip-8 program, we'll write the instructions byte by byte into memory. YES YOU'RE RIGHT, THIS IS DANGEROUS! Since we're sharing program and general memory, programs can modify their own code. In reality since Chip-8 programs are so small, it's not a massive problem (whew). Although, it can be a little bonus!
-
 
 ## keyboard
 
@@ -53,19 +52,16 @@ void sys(uint16_t address) {
 
 **This instruction CLears the Screen.** The Chip-8 display is made of 64 by 32 monochrome pixels. Thus, we interpret "clear" to mean that all pixels should be turned to the off state. What colour a pixel is in the off vs on state is up to the implementation. I think it's reasonable to have the off state be dark, and the on state to be light.
 
-// TODO: We will write a separate module later which encapsulates the rendering details. 
-// TODO: For now it will stay as an array
-
 ```cpp
 #include <algorithm>
-const uint16_t SCREEN_WIDTH = 64;
-const uint16_t SCREEN_HEIGHT = 32;
-std::array<bool, SCREEN_WIDTH * SCREEN_HEIGHT> screen;
 void cls() {
-    std::ranges::fill(screen, false);
+    std::ranges::fill(chip8_display.buffer, false);
+    chip8_display.render_buffer();
     program_counter += 1;
 }
 ```
+
+See [sdl integration](##sdl-integration) for the definition of `chip8_display`.
 
 ### `RET` [00ee]
 
@@ -365,7 +361,7 @@ void jump_reg0(uint16_t address) {
 
 ### `RND Vx value` [cxyy]
 
-**This command generates a RaNDom integer in [0, 255], which is then applied bitwise and against value. The result is stored in register x.**
+**This command generates a RaNDom integer in `[0, 255]`, which is then applied bitwise and against value. The result is stored in register x.**
 
 ```cpp
 #include <random>
@@ -409,17 +405,19 @@ void draw(uint8_t reg_x, uint8_t reg_y, uint8_t value) {
         size_t row = memory[i_register + row_i];
         for (size_t bit_i = 0; bit_i < SPRITE_WIDTH; bit_i++) {
             // sprites wrap around the display
-            auto xpos = (ul_xpos + bit_i) % SCREEN_WIDTH;
-            auto ypos = (ul_ypos + row_i) % SCREEN_HEIGHT;
+            auto xpos = (ul_xpos + bit_i) % Chip8Display::SCREEN_WIDTH;
+            auto ypos = (ul_ypos + row_i) % Chip8Display::SCREEN_HEIGHT;
             
-            bool before = screen[xpos + ypos * SCREEN_WIDTH];
-            bool after = (screen[xpos + ypos * SCREEN_WIDTH] ^= (row & (0x80 >> bit_i)) != 0);
+            bool before = chip8_display.buffer[xpos + ypos * Chip8Display::SCREEN_WIDTH];
+            bool after = (chip8_display.buffer[xpos + ypos * Chip8Display::SCREEN_WIDTH] ^= (row & (0x80 >> bit_i)) != 0);
             if (before && !after)
                 gp_registers[0xf] = 1;
         }
     }
 
-    // TODO: is there a fancy way to do this & the 0xf register thingy using only a single thread?
+    chip8_display.render_buffer();
+
+    // TODO: is there a fancy way to do this & the 0xf register thingy using only a single thread (& fancy function)?
     /* std::transform(
         screen.begin() + screen_index,
         screen.begin() + screen_index + value,
@@ -432,6 +430,8 @@ void draw(uint8_t reg_x, uint8_t reg_y, uint8_t value) {
 }
 ```
 
+See [sdl integration](##sdl-integration) for the definition of `chip8_display`.
+
 ### `SKP Vx` [ex9e]
 
 Computers for which Chip-8 was originally developed had a 16-key hexadecimal keypad. **This command Skips the next instruction if a Key with the value in register x is Pressed.**
@@ -439,7 +439,7 @@ Computers for which Chip-8 was originally developed had a 16-key hexadecimal key
 // TODO: use SDL3 to poll for key presses
 
 ```cpp
-std::array<bool, 16> keys_pressed;
+// std::array<bool, 16> keys_pressed;
 
 void skip_if_key_press(uint8_t reg) {
     if (reg > 15)
@@ -472,7 +472,7 @@ void skip_if_not_key_press(uint8_t reg) {
 }
 ```
 
-### `LD Vx` [Fx07]
+### `LD Vx DT` [Fx07]
 
 Chip-8 has two 8-bit timer registers: the delay and sound timers. At a rate of 60hz, the value in the delay and sound timers will decrease by 1, if they are not already 0. **This command LoaDs the value from the delay timer into register x.**
 
@@ -489,15 +489,15 @@ void load_from_delay_reg(uint8_t reg) {
 }
 ```
 
-### `LD Vx` [fx0a]
+### `LD Vx NextKey` [fx0a]
 
-**This command waits, then LoaDs the value of the next key press into register x.**
+**This command waits (blocks), then LoaDs the value of the next key press into register x.**
 
 ```cpp
 // TODO: create this keyboard class!
 Geb::SDL3_Keyboard keyboard;
 
-void load_from_delay_reg(uint8_t reg) {
+void load_from_next_keypress(uint8_t reg) {
     if (reg > 15)
         throw std::runtime_error("invalid register number");
 
@@ -511,18 +511,327 @@ void load_from_delay_reg(uint8_t reg) {
 }
 ```
 
-### Fx15 - LD DT, Vx
+### `LD DT Vx` [fx15]
 
-// TODO: this next!
+**This command LoaDs the delay timer with the value of register x.**
 
-### Fx18 - LD ST, Vx
-### Fx1E - ADD I, Vx
-### Fx29 - LD F, Vx
-### Fx33 - LD B, Vx
-### Fx55 - LD [I], Vx
-### Fx65 - LD Vx, [I]
+```cpp
+void set_delay(uint8_t reg) {
+    if (reg > 15)
+        throw std::runtime_error("invalid register number");
+
+    delay_register = gp_registers[reg];
+    program_counter += 1;
+}
+```
+
+### `LD ST Vx` [fx18]
+
+**This command LoaDs the sound timer with the value of register x.**
+
+```cpp
+void set_sound(uint8_t reg) {
+    if (reg > 15)
+        throw std::runtime_error("invalid register number");
+
+    sound_register = gp_registers[reg];
+    program_counter += 1;
+}
+```
+
+### `ADD I Vx` [fx1e]
+
+**This command increments the i register by the value in register x.**
+
+```cpp
+void increment_i_reg(uint8_t reg) {
+    if (reg > 15)
+        throw std::runtime_error("invalid register number");
+    
+    i_register += gp_registers[reg];
+    program_counter += 1;
+}
+```
+
+### `LD I Sprite[Vx]` [fx29]
+
+Chip-8 has some built-in sprites for the 16 hex characters 0x0 through 0xf, stored in the interpreter's memory area. **This command LoaDs the i register with the address of sprite for the digit stored in register x.**
+
+```cpp
+const uint16_t BUILT_IN_CHAR_STARTING_ADDRESS = 0x100;
+std::ranges::copy({0xf0, 0x90, 0x90, 0x90, 0xf0}, memory.begin() + BUILT_IN_CHAR_STARTING_ADDRESS + 5 * 0x0);
+std::ranges::copy({0x20, 0x60, 0x20, 0x20, 0x70}, memory.begin() + BUILT_IN_CHAR_STARTING_ADDRESS + 5 * 0x1);
+std::ranges::copy({0xf0, 0x10, 0xf0, 0x80, 0xf0}, memory.begin() + BUILT_IN_CHAR_STARTING_ADDRESS + 5 * 0x2);
+std::ranges::copy({0xf0, 0x10, 0xf0, 0x10, 0xf0}, memory.begin() + BUILT_IN_CHAR_STARTING_ADDRESS + 5 * 0x3);
+std::ranges::copy({0x90, 0x90, 0xf0, 0x10, 0x10}, memory.begin() + BUILT_IN_CHAR_STARTING_ADDRESS + 5 * 0x4);
+std::ranges::copy({0xf0, 0x80, 0xf0, 0x10, 0xf0}, memory.begin() + BUILT_IN_CHAR_STARTING_ADDRESS + 5 * 0x5);
+std::ranges::copy({0xf0, 0x80, 0xf0, 0x90, 0xf0}, memory.begin() + BUILT_IN_CHAR_STARTING_ADDRESS + 5 * 0x6);
+std::ranges::copy({0xf0, 0x10, 0x20, 0x40, 0x40}, memory.begin() + BUILT_IN_CHAR_STARTING_ADDRESS + 5 * 0x7);
+std::ranges::copy({0xf0, 0x90, 0xf0, 0x90, 0xf0}, memory.begin() + BUILT_IN_CHAR_STARTING_ADDRESS + 5 * 0x8);
+std::ranges::copy({0xf0, 0x90, 0xf0, 0x10, 0xf0}, memory.begin() + BUILT_IN_CHAR_STARTING_ADDRESS + 5 * 0x9);
+std::ranges::copy({0xf0, 0x90, 0xf0, 0x90, 0x90}, memory.begin() + BUILT_IN_CHAR_STARTING_ADDRESS + 5 * 0xa);
+std::ranges::copy({0xe0, 0x90, 0xe0, 0x90, 0xe0}, memory.begin() + BUILT_IN_CHAR_STARTING_ADDRESS + 5 * 0xb);
+std::ranges::copy({0xf0, 0x80, 0x80, 0x80, 0xf0}, memory.begin() + BUILT_IN_CHAR_STARTING_ADDRESS + 5 * 0xc);
+std::ranges::copy({0xe0, 0x90, 0x90, 0x90, 0xe0}, memory.begin() + BUILT_IN_CHAR_STARTING_ADDRESS + 5 * 0xd);
+std::ranges::copy({0xf0, 0x80, 0xf0, 0x80, 0xf0}, memory.begin() + BUILT_IN_CHAR_STARTING_ADDRESS + 5 * 0xe);
+std::ranges::copy({0xf0, 0x80, 0xf0, 0x80, 0x80}, memory.begin() + BUILT_IN_CHAR_STARTING_ADDRESS + 5 * 0xf);
+
+void load_sprite(uint8_t reg) {
+    if (reg > 15)
+        throw std::runtime_error("invalid register number");
+
+    i_register = BUILT_IN_CHAR_STARTING_ADDRESS + 5 * (gp_registers[reg] % 16);
+    program_counter += 1;
+}
+```
+
+### `LDB Vx` [fx33]
+
+**This command LoaDs the Binary coded decimal (BCD) representation of the value in register x into memory locations I, I+1, I+2.**
+
+```cpp
+void load_bcd(uint8_t reg) {
+    if (reg > 15)
+        throw std::runtime_error("invalid register number");
+
+    // TODO: should I check whether the memory location is valid?
+    memory[i_register] = gp_registers[reg] % 10;
+    memory[i_register+1] = (gp_registers[reg] % 100 - gp_registers[reg] % 10) / 10;
+    memory[i_register+2] = (gp_registers[reg] - gp_registers[reg] % 100) / 100;
+    program_counter += 1;
+}
+```
+
+### `LDRM Vx` [fx55]
+
+**This command LoaDs Registers 0 through x to Memory, starting at the address stored in the i register.**
+
+```cpp
+void load_reg_to_mem(uint8_t reg_final) {
+    if (reg_final > 15)
+        throw std::runtime_error("invalid register number");
+
+    // TODO: should I check whether the memory locations are all valid?
+    for (uint8_t i = 0; i <= reg_final; i++) {
+        memory[i_register+i] = gp_registers[i];
+    }
+    program_counter += 1;
+}
+```
+
+### `LDMR Vx` [fx65]
+
+**This command LoaDs values from memory starting at the i register, into registers 0 through x.**
+
+```cpp
+void load_mem_to_reg(uint8_t reg_final) {
+    if (reg_final > 15)
+        throw std::runtime_error("invalid register number");
+
+    // TODO: should I check whether the memory locations are all valid?
+    for (uint8_t i = 0; i <= reg_final; i++) {
+        gp_registers[i] = memory[i_register+i];
+    }
+    program_counter += 1;
+}
+```
 
 ## sdl integration
+
+Next, we need to be able to:
+1. Render our display
+2. Get keyboard input
+3. Play our sfx when the sound timer is non-zero
+
+### (1) render display
+
+The only blocking instruction is `fx0a`, so we can update the display whenever it's modified. Since the timers run at 60hz, we only need to be careful that no instruction takes a significant portion of that time, otherwise graphics will render weirdly. If we limit each instruction to take no longer than 1000ms/60hz, that gives roughly 16ms per operation. An easy target!
+
+In the following snippet we setup SDL3, then create a simple a class with an interface allowing the display buffer to be modified and rendered.
+
+```cpp
+#include <SDL3/SDL.h>
+// redefines main for portability reasons
+#include <SDL3/SDL_main.h>
+
+class Chip8Display {
+private:
+    SDL_Window* window = nullptr;
+    SDL_Renderer* renderer = nullptr;
+
+    // the edge size of a pixel rendered on the native display
+    const size_t scale_factor = 4;
+
+public:
+    Chip8Display() {
+        if (!SDL_Init(SDL_INIT_VIDEO))
+            throw std::runtime_error(std::format("SDL_Init error: {}\n", SDL_GetError()));
+
+        if (!SDL_CreateWindowAndRenderer(
+            "Chip8 Display",
+            Chip8Display::SCREEN_WIDTH  * this->scale_factor,
+            Chip8Display::SCREEN_HEIGHT * this->scale_factor,
+            0, &this->window, &this->renderer
+        ))
+            throw std::runtime_error(std::format("SDL_CreateWindowAndRenderer error: {}\n", SDL_GetError()));
+
+        SDL_SetRenderVSync(this->renderer, SDL_RENDERER_VSYNC_ADAPTIVE);
+    }
+
+    void render_buffer() {
+        // TODO: later, consider a more efficient way to send this data to the gpu & render it
+        for (uint16_t y = 0; y < Chip8Display::SCREEN_HEIGHT; y++) {
+            for (uint16_t x = 0; x < Chip8Display::SCREEN_WIDTH; x++) {
+                bool px_active = buffer[x + y * Chip8Display::SCREEN_WIDTH];
+                if (px_active)
+                    SDL_SetRenderDrawColor(this->renderer, 255, 255, 255, 255);
+                else
+                    SDL_SetRenderDrawColor(this->renderer, 25, 25, 25, 255);
+
+                const SDL_FRect pixel_bounds{
+                    x * this->scale_factor,
+                    y * this->scale_factor,
+                    this->scale_factor, this->scale_factor
+                };
+                SDL_RenderFillRect(this->renderer, &pixel_bounds);
+            }
+        }
+
+        SDL_RenderPresent(renderer);
+    }
+
+    const uint16_t SCREEN_WIDTH = 64;
+    const uint16_t SCREEN_HEIGHT = 32;
+    std::array<bool, SCREEN_WIDTH * SCREEN_HEIGHT> buffer;
+
+    ~Chip8Display() {
+        SDL_DestroyRenderer(this->renderer);
+        SDL_DestroyWindow(this->window);
+        SDL_Quit();
+    }
+};
+
+Chip8Display chip8_display;
+```
+
+The above class addresses the only two rendering instructions: `00e0` and `dxyz`.
+
+### (2) get keyboard input
+
+// TODO: ensure the following works alright! 
+
+```cpp
+#include <atomic>
+#include <thread>
+#include <optional>
+
+enum Key {
+    K0 = 0,
+    K1, K2, K3,
+    K4, K5, K6,
+    K7, K8, K9,
+    KA, KB, KC,
+    KD, KE, KF
+};
+
+class Chip8Keyboard {
+private:
+    // never need to update more than 1 key at once
+    // true means down
+    std::array<std::atomic<bool>, 16> keyboard_state;
+    
+    // TODO: is there a good way to encapsulate this?
+    std::atomic<bool> keyboard_thread_is_active = true;
+    std::jthread poll_events_thread(poll_events);
+
+    // TODO: can we encapsulate this in an easier structure?
+    std::atomic<bool> write_next_keyboard_event = false;
+    std::optional<Key> next_key;
+    std::mutex processing_key_down;
+    std::condition_variable wait_for_next_key;
+
+    void poll_events() {
+        SDL_Event event;
+        while (true) {
+            while (SDL_PollEvent(&event)) {
+                if (!keyboard_thread_is_active)
+                    return;
+
+                if (event->type == SDL_EVENT_QUIT) {
+                    // TODO: is std::cout thread safe? 
+                    std::cout << "Exiting..." << std::endl;
+                    exit(1);
+                } else if (event->type == SDL_EVENT_KEY_DOWN) {
+                    // https://wiki.libsdl.org/SDL3/SDL_Keycode
+                    usize_t key_i;
+                    auto key = event->key.key;
+                    if (key >= SDLK_0 && key <= SDLK_9) {
+                        key_i = 0x0 + (key - SDLK_0);
+                    } else if (key >= SDLK_a && key <= SDLK_f) {
+                        key_i = 0xa + (key - SDLK_a);
+                    } else {
+                        // invalid keydown doesn't lock mutex
+                        continue;
+                    }
+
+                    // TODO: skip all non-keyboard events.
+                    std::lock_guard lock(processing_key_down);
+                    if (write_next_keyboard_event) {
+                        next_key = std::optional(static_cast<Key>(key_i));
+                        wait_for_next_key.notify_one();
+                    }
+
+                    this->keyboard_state[key_i] = true;
+
+                } else if (event->type == SDL_EVENT_KEY_UP) {
+                    auto key = event->key.key;
+                    if (key >= SDLK_0 && key <= SDLK_9) {
+                        this->keyboard_state[0x0 + (key - SDLK_0)] = false;
+                    } else if (key >= SDLK_a && key <= SDLK_f) {
+                        this->keyboard_state[0xa + (key - SDLK_a)] = false;
+                    }
+                }
+
+            }
+
+            // In the worst case, sleep may wait up to 15ms, which is still 60hz, so we should be fine!
+            // In the best case, we get 1000/(0.5) = 2000hz, which is super
+            std::this_thread::sleep_for(std::chrono::microseconds(500));
+        }
+        
+    }
+
+public:
+    Chip8Keyboard() {}
+
+    ~Chip8Keyboard() {
+        keyboard_thread_is_active = false;
+    }
+
+    bool is_key_pressed(Key key) const {
+       // Q: should we wait until this instruction to poll events, or do we do so in the background? 
+       // I would prefer to do it only during this thread; but it depends on the size of the queue!
+
+       // actually, no matter the size of the queue, we want to immediately poll and accept key
+       // presses until we block.
+    }
+
+    Key block_until_next_key() {
+        // this lock blocks the next keybaord event from starting, or waits until it is done.
+        std::unique_lock lock(processing_key_down);
+        should_write_next_keyboard_event = true;
+        wait_for_next_key.wait(lock, [&next_key]{ return next_key.has_value(); });
+
+        // hold the lock until the end of this very short function in case another keyboard is polled in between & we
+        // miss a key! 
+        Key result = this->next_key.value();
+        this->next_key = std::nullopt;
+        return result;
+    }
+};
+
+
+```
 
 ## put it all together!
 
