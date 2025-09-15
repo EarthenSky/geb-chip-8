@@ -718,7 +718,7 @@ The above class addresses the only two rendering instructions: `00e0` and `dxyz`
 
 ### (2) get keyboard input
 
-// TODO: ensure the following works alright! 
+In the following snippet we create a keyboard class with a function to request the next key-down, and a function to get the current state. Since we don't want our input queue to ever get too full, we spawn a thread to deal with it in (mostly) realtime. We then create a short single-channel class to ease communication between the two.
 
 ```cpp
 #include <atomic>
@@ -734,34 +734,66 @@ enum Key {
     KD, KE, KF
 };
 
+/// @brief a channel allowing a consumer to request the next item from the producer, and the producer to decide when to
+/// accept a request.
+template <typename T>
+class ChannelCoordinator {
+private:
+    std::atomic<bool> is_request_pending = false;
+    std::optional<T> message = std::nullopt;
+
+    std::mutex channel_lock;
+    std::condition_variable wait_for_response;
+
+public:
+    ChannelCoordinator() {}
+
+    T request() {
+        std::unique_lock lock(this->channel_lock);
+        this->is_request_pending = true;
+        this->wait_for_response.wait(lock, [&message]{ return message.has_value(); });
+
+        // hold this lock until the end of this function in case another request is made in between & we skip a response!
+        T response = this->message.value();
+        this->message = std::nullopt;
+        return response;
+    }
+
+    /// @brief will only send & copy data if requested, otherwise will not
+    void send_if_requested(T&& data) {
+        std::lock_guard lock(this->channel_lock);
+        if (this->is_request_pending) {
+            this->next_key = std::optional(std::forward<T>(data));
+            this->is_request_pending = false;
+            this->wait_for_response.notify_one();
+        }
+    }
+}
+
 class Chip8Keyboard {
 private:
     // never need to update more than 1 key at once
     // true means down
     std::array<std::atomic<bool>, 16> keyboard_state;
     
-    // TODO: is there a good way to encapsulate this?
-    std::atomic<bool> keyboard_thread_is_active = true;
     std::jthread poll_events_thread(poll_events);
 
-    // TODO: can we encapsulate this in an easier structure?
-    std::atomic<bool> write_next_keyboard_event = false;
-    std::optional<Key> next_key;
-    std::mutex processing_key_down;
-    std::condition_variable wait_for_next_key;
+    ChannelCoordinator<Key> key_channel;
 
-    void poll_events() {
-        SDL_Event event;
+    void poll_events(std::stop_token stop_token) {
         while (true) {
+            SDL_Event event;
             while (SDL_PollEvent(&event)) {
-                if (!keyboard_thread_is_active)
+                if (stop_token.stop_requested())
                     return;
 
                 if (event->type == SDL_EVENT_QUIT) {
-                    // TODO: is std::cout thread safe? 
-                    std::cout << "Exiting..." << std::endl;
+                    std::cout << std::string("Exiting..." + std::endl);
                     exit(1);
-                } else if (event->type == SDL_EVENT_KEY_DOWN) {
+                } else if (
+                    event->type == SDL_EVENT_KEY_DOWN
+                    || event->type == SDL_EVENT_KEY_UP
+                ) {
                     // https://wiki.libsdl.org/SDL3/SDL_Keycode
                     usize_t key_i;
                     auto key = event->key.key;
@@ -774,64 +806,39 @@ private:
                         continue;
                     }
 
-                    // TODO: skip all non-keyboard events.
-                    std::lock_guard lock(processing_key_down);
-                    if (write_next_keyboard_event) {
-                        next_key = std::optional(static_cast<Key>(key_i));
-                        wait_for_next_key.notify_one();
-                    }
+                    if (event->type == SDL_EVENT_KEY_DOWN)
+                        key_channel.send_if_requested(static_cast<Key>(key_i));
 
-                    this->keyboard_state[key_i] = true;
-
-                } else if (event->type == SDL_EVENT_KEY_UP) {
-                    auto key = event->key.key;
-                    if (key >= SDLK_0 && key <= SDLK_9) {
-                        this->keyboard_state[0x0 + (key - SDLK_0)] = false;
-                    } else if (key >= SDLK_a && key <= SDLK_f) {
-                        this->keyboard_state[0xa + (key - SDLK_a)] = false;
-                    }
+                    this->keyboard_state[key_i] = (event->type == SDL_EVENT_KEY_DOWN);
                 }
-
             }
 
             // In the worst case, sleep may wait up to 15ms, which is still 60hz, so we should be fine!
             // In the best case, we get 1000/(0.5) = 2000hz, which is super
             std::this_thread::sleep_for(std::chrono::microseconds(500));
         }
-        
     }
 
 public:
-    Chip8Keyboard() {}
-
-    ~Chip8Keyboard() {
-        keyboard_thread_is_active = false;
-    }
+    Chip8Keyboard() = default;
+    ~Chip8Keyboard() = default;
 
     bool is_key_pressed(Key key) const {
-       // Q: should we wait until this instruction to poll events, or do we do so in the background? 
-       // I would prefer to do it only during this thread; but it depends on the size of the queue!
-
-       // actually, no matter the size of the queue, we want to immediately poll and accept key
-       // presses until we block.
+       return keyboard_state[static_cast<usize_t>(key)];
     }
 
     Key block_until_next_key() {
-        // this lock blocks the next keybaord event from starting, or waits until it is done.
-        std::unique_lock lock(processing_key_down);
-        should_write_next_keyboard_event = true;
-        wait_for_next_key.wait(lock, [&next_key]{ return next_key.has_value(); });
-
-        // hold the lock until the end of this very short function in case another keyboard is polled in between & we
-        // miss a key! 
-        Key result = this->next_key.value();
-        this->next_key = std::nullopt;
-        return result;
+        // blocks the next keybaord event from starting, or waits until it is done
+        return this->key_channel.request();
     }
 };
 
 
 ```
+
+### (3) Play sounds
+
+// TODO: look at SDL docs first
 
 ## put it all together!
 
