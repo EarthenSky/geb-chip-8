@@ -434,18 +434,14 @@ See [sdl integration](##sdl-integration) for the definition of `chip8_display`.
 
 ### `SKP Vx` [ex9e]
 
-Computers for which Chip-8 was originally developed had a 16-key hexadecimal keypad. **This command Skips the next instruction if a Key with the value in register x is Pressed.**
-
-// TODO: use SDL3 to poll for key presses
+Computers for which Chip-8 was originally developed had 16-key hexadecimal keypads. **This command Skips the next instruction if a Key with the value in register x is Pressed.**
 
 ```cpp
-// std::array<bool, 16> keys_pressed;
-
 void skip_if_key_press(uint8_t reg) {
     if (reg > 15)
         throw std::runtime_error("invalid register number");
 
-    if (keys_pressed[gp_registers[reg] % 16]) {
+    if (chip8_keyboard.is_key_pressed(gp_registers[reg] % 16)) {
         program_counter += 2;
     } else {
         program_counter += 1;
@@ -453,18 +449,18 @@ void skip_if_key_press(uint8_t reg) {
 }
 ```
 
+See [sdl integration](##sdl-integration) for the definition of `chip8_keyboard`.
+
 ### `SKNP Vx` [exa1]
 
 **This command Skip the next instruction if a Key with the value in register x is Not Pressed.**
-
-// TODO: use SDL3 to poll for key presses
 
 ```cpp
 void skip_if_not_key_press(uint8_t reg) {
     if (reg > 15)
         throw std::runtime_error("invalid register number");
 
-    if (!keys_pressed[gp_registers[reg] % 16]) {
+    if (!chip8_keyboard.is_key_pressed(gp_registers[reg] % 16)) {
         program_counter += 2;
     } else {
         program_counter += 1;
@@ -472,37 +468,32 @@ void skip_if_not_key_press(uint8_t reg) {
 }
 ```
 
-### `LD Vx DT` [Fx07]
+### `LD Vx DT` [fx07]
 
 Chip-8 has two 8-bit timer registers: the delay and sound timers. At a rate of 60hz, the value in the delay and sound timers will decrease by 1, if they are not already 0. **This command LoaDs the value from the delay timer into register x.**
 
 ```cpp
-uint8_t delay_register = 0;
-uint8_t sound_register = 0;
-
-void load_from_delay_reg(uint8_t reg) {
+void load_from_delay_timer(uint8_t reg) {
     if (reg > 15)
         throw std::runtime_error("invalid register number");
 
-    gp_registers[reg] = delay_register;
+    gp_registers[reg] = delay_timer.value();
     program_counter += 1;
 }
 ```
+
+See [sdl integration](##sdl-integration) for the definition of `delay_timer`.
 
 ### `LD Vx NextKey` [fx0a]
 
 **This command waits (blocks), then LoaDs the value of the next key press into register x.**
 
 ```cpp
-// TODO: create this keyboard class!
-Geb::SDL3_Keyboard keyboard;
-
 void load_from_next_keypress(uint8_t reg) {
     if (reg > 15)
         throw std::runtime_error("invalid register number");
 
-    // TODO: filter out invalid keys
-    uint8_t key = keyboard.block_until_keypress(true);
+    uint8_t key = chip8_keyboard.block_until_next_keypress(true);
     if (key > 15)
         throw std::runtime_error("invalid key value");
 
@@ -520,7 +511,7 @@ void set_delay(uint8_t reg) {
     if (reg > 15)
         throw std::runtime_error("invalid register number");
 
-    delay_register = gp_registers[reg];
+    delay_timer.set(gp_registers[reg]);
     program_counter += 1;
 }
 ```
@@ -534,10 +525,12 @@ void set_sound(uint8_t reg) {
     if (reg > 15)
         throw std::runtime_error("invalid register number");
 
-    sound_register = gp_registers[reg];
+    sound_timer.set(gp_registers[reg]);
     program_counter += 1;
 }
 ```
+
+See [sdl integration](##sdl-integration) for the definition of `sound_timer`.
 
 ### `ADD I Vx` [fx1e]
 
@@ -641,7 +634,8 @@ void load_mem_to_reg(uint8_t reg_final) {
 Next, we need to be able to:
 1. Render our display
 2. Get keyboard input
-3. Play our sfx when the sound timer is non-zero
+3. Run timers
+4. Play our sfx when the sound timer is non-zero
 
 ### (1) render display
 
@@ -714,9 +708,11 @@ public:
 Chip8Display chip8_display;
 ```
 
-The above class addresses the only two rendering instructions: `00e0` and `dxyz`.
+The above class addresses the 2 rendering instructions: `00e0` and `dxyz`.
 
 ### (2) get keyboard input
+
+Despite that hexadecimal keypads were originally organized in a square (kinda like a phone), we will simply map by key. Surely we can add explicit keybinding later.
 
 In the following snippet we create a keyboard class with a function to request the next key-down, and a function to get the current state. Since we don't want our input queue to ever get too full, we spawn a thread to deal with it in (mostly) realtime. We then create a short single-channel class to ease communication between the two.
 
@@ -768,7 +764,7 @@ public:
             this->wait_for_response.notify_one();
         }
     }
-}
+};
 
 class Chip8Keyboard {
 private:
@@ -827,18 +823,75 @@ public:
        return keyboard_state[static_cast<usize_t>(key)];
     }
 
-    Key block_until_next_key() {
+    Key block_until_next_keypress() {
         // blocks the next keybaord event from starting, or waits until it is done
         return this->key_channel.request();
     }
 };
 
-
+Chip8Keyboard chip8_keyboard;
 ```
 
-### (3) Play sounds
+The above class addresses the 3 keyboard instructions: `ex9e`, `exa1`, and `fx0a`.
+
+### (3) Run timers
+
+Instead of sleeping the current thread, we maintain a timestamp for when operations are applied. Thus, we can figure out what value the timer "should be" based on how much time has elapsed. This is much less overhead, which is great! 
+
+The following snippet creates both the sound and delay timers.
+
+```cpp
+#include <chrono>
+
+class Timer60hz {
+private:
+    uint8_t _value;
+    std::chrono::time_point<std::chrono::steady_clock> timestamp;
+
+public:
+    uint8_t value() {
+        if (this->_value == 0)
+            return this->_value;
+
+        // timer should decrease by 60 per 1000 * 1000 us
+        // we can reasonably round this to 16667 us per value
+        auto current = std::chrono::steady_clock::now();
+        auto duration = duration_cast<std::chrono::microseconds>(current - this->timestamp).count();
+        // separate this into 1s amounts (no error) and smaller amounts (few tick errors b/c 16667 != 16666.66666...)
+        size_t value_elapsed = 60 * (duration / (1000*1000)) + ((duration % (1000*1000)) / 16667);
+        if (value_elapsed >= duration) {
+            return 0;
+        } else {
+            return this->_value - value_elapsed;
+        }
+    }
+    void set(uint8_t new_value) {
+        this->_value = new_value;
+        this->timestamp = std::chrono::steady_clock::now();
+    }
+};
+
+Timer60hz sound_timer;
+Timer60hz delay_timer;
+sound_timer.set(0);
+delay_timer.set(0);
+```
+
+The above class addresses the 3 timer instructions: `fx07`, `fx15`, and `fx18`.
+
+### (4) Play sounds
 
 // TODO: look at SDL docs first
+
+// 200hz square wave sounds lovely
+
+We can simply feed SDL's audio buffer with data as long as the sound timer is non-zero. We can create the class with a reference to an existing timer, so that it always knows where to get data from.
+
+```cpp
+class Chip8Speaker {
+
+};
+```
 
 ## put it all together!
 
