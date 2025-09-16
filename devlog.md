@@ -881,19 +881,81 @@ The above class addresses the 3 timer instructions: `fx07`, `fx15`, and `fx18`.
 
 ### (4) Play sounds
 
-// TODO: look at SDL docs first
+A 200hz square wave sounds lovely!
 
-// 200hz square wave sounds lovely
+The following speaker class registers a callback to an SDL3 stream, in which it supplies data based on the current state of the sound timer, held by reference. It's possible that the sound register can be modified quickly enough that the callback doesn't notice and doesn't update the changes to the speaker, however the errors will be too small for people to notice as they will (likely) on the order of several ms (depending on how frequently audio data is requested).
 
-We can simply feed SDL's audio buffer with data as long as the sound timer is non-zero. We can create the class with a reference to an existing timer, so that it always knows where to get data from.
+// TODO: It's not clear how many ms it will be. Actually, it could be really long; even on the order of 300ms! TODO: do some testing, or look further into 
+// https://github.com/libsdl-org/SDL/blob/9ad04ff69e2868f2ad947365727f33ff74851802/src/audio/SDL_audiocvt.c#L1362C34-L1362C61
 
 ```cpp
-class Chip8Speaker {
+#include <SDL3/SDL_audio.h>
+#include <algorithm>
 
+class Chip8Speaker {
+private:
+    const static SDL_AudioSpec OUTPUT_SPEC = {
+        SDL_AUDIO_U8,
+        1,
+        // TODO: increase sample rate so our sfx sounds more like a square wave!
+        400
+    };
+
+    SDL_AudioDeviceID device_id = 0;
+    SDL_AudioStream* out_stream = nullptr;
+
+    Timer60hz& sound_timer;
+
+    void out_stream_callback(void*, SDL_AudioStream *stream, int additional_amount, int total_amount) {
+        if (additional_amount == 0)
+            return;
+
+        uint8_t value = this->sound_timer.value();
+
+        std::array<uint8_t, additional_amount> samples;
+        std::ranges::fill(samples, 0);
+
+        // 400hz sample rate, 60hz timer
+        // each timer value represents the same time-period as 6.66666... samples
+        size_t limit = std::min((size_t) (value * (400.0 / 60.0)), samples.size());
+        for (size_t i = 0; i < limit; i++) {
+            // Since our sample rate is 400hz, we should expect to get a 200hz wave that is somewhat sine/square shaped.
+            // The actual shape depends on SDL3's built-in resampler.
+            if (i % 2 == 0)
+                samples[i] == 0x40;
+        }
+
+        // TODO: remember the last queued sample to decide on phase of the wave (for now, we'll just get lil blips and
+        // that's okay)
+
+        SDL_PutAudioStreamData(stream, samples.data(), samples.size() * sizeof(uint8_t));
+    }
+
+public:
+    Chip8Speaker(Timer60hz& sound_timer) : sound_timer(sound_timer) {
+        this->device_id = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, nullptr);
+        if (this->device_id == 0)
+            throw std::runtime_error(std::format("SDL_OpenAudioDevice failed with: {}", SDL_GetError()));
+
+        this->out_stream = SDL_CreateAudioStream(nullptr, &Chip8Speaker::OUTPUT_SPEC);
+        if (this->out_stream == nullptr)
+            throw std::runtime_error(std::format("SDL_CreateAudioStream failed with: {}", SDL_GetError()));
+
+        if (!SDL_BindAudioStream(this->device_id, this->out_stream))
+            throw std::runtime_error(std::format("SDL_BindAudioStream failed with: {}", SDL_GetError()));
+
+        SDL_SetAudioStreamGetCallback(this->out_stream, out_stream_callback, nullptr);
+    }
+    ~Chip8Speaker() {
+        SDL_DestroyAudioStream(this->out_stream);
+        SDL_CloseAudioDevice(this->device_id);
+    }
 };
 ```
 
 ## put it all together!
+
+// TODO: this next
 
 Now that we have all our instruction snippets, lets put them all in a class, and provide an interface that accepts a program.
 
