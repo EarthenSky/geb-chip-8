@@ -645,8 +645,6 @@ In the following snippet we setup SDL3, then create a simple a class with an int
 
 ```cpp
 #include <SDL3/SDL.h>
-// redefines main for portability reasons
-#include <SDL3/SDL_main.h>
 
 class Chip8Display {
 private:
@@ -955,19 +953,38 @@ public:
 
 ## put it all together!
 
-// TODO: this next
+Now that we have all our separate components let's put them all together, then provide an interface that accepts a program in memory.
 
-Now that we have all our instruction snippets, lets put them all in a class, and provide an interface that accepts a program.
+### compilation bugs
 
-...
-
-We'll also want to figure out what structure
+I originally wrote all the components without testing, so the following are all the interesting bugs I found:
+- Namespaces!
+  - Not exactly a bug, but I noticed all the subsystems were named similarly, so I was able to refactor them into namespaces.
+- `std::array` size
+  - I was treating `std::array` as a constant sized dynamically allocated memory segment, when in reality it's a fixed size memory segment! In some cases, I had to replace it with `std::vector` ... TODO: this
+- improper use of default member initializers
+  - For `const static` members, only integral and enum types can be initialized in the class definition. This is due to quirks of the compiler and how the data is stored. However, we can bypass this by using `constexpr` instead, which is much more flexible.
+- function pointers can't be members
+  - if you want to pass a function pointer to a member function to a c procedure, it's gotta be a static!
+- wrong passing of a member function
+  - when initializing `std::jthread`, I tried to pass the member function by pointer. This fails for two reasons. Firstly, the class name is required. Secondly, for member functions, there is no [function-to-pointer](https://en.cppreference.com/w/cpp/language/implicit_cast.html) implicit conversion. Instead, you have a member function designator which needs to explicitly have its address taken to get a function pointer.
+  - HOWEVER, even this doesn't work, likely due to the `std::stop_token` parameter, so we have to resort to using a lambda `[this](std::stop_token token) { this->poll_events(token); }`.
 
 ## basic tests
 
-## display
+```
+0x6103 // V1 = 0x03
+0xf129 // I = letter_sprite[V1]
+// TODO: draw the sprites out to write 314
+```
 
-## sounds
+### more bugs
+
+## display ?
+
+## sounds ?
+
+## a simple assembler language?
 
 ## TODO: consider static analysis
 
