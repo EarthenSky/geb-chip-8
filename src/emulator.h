@@ -38,42 +38,11 @@ namespace Chip8 {
         // setup prng
         std::random_device rand_dev;
         std::default_random_engine prng_engine;
-        std::uniform_int_distribution<uint8_t> random_u8_dist;
+        std::uniform_int_distribution<unsigned int> random_u8_dist;
 
         static const uint8_t SPRITE_WIDTH = 8;
 
         static const uint16_t BUILT_IN_CHAR_STARTING_ADDRESS = 0x100;
-
-        Emulator() : prng_engine(rand_dev()) {
-            sound_timer.set(0);
-            delay_timer.set(0);
-
-            using Sprite = std::array<uint8_t, 5>;
-            std::vector<Sprite> data = {
-                {0xf0, 0x90, 0x90, 0x90, 0xf0},
-                {0x20, 0x60, 0x20, 0x20, 0x70},
-                {0xf0, 0x10, 0xf0, 0x80, 0xf0},
-                {0xf0, 0x10, 0xf0, 0x10, 0xf0},
-                {0x90, 0x90, 0xf0, 0x10, 0x10},
-                {0xf0, 0x80, 0xf0, 0x10, 0xf0},
-                {0xf0, 0x80, 0xf0, 0x90, 0xf0},
-                {0xf0, 0x10, 0x20, 0x40, 0x40},
-                {0xf0, 0x90, 0xf0, 0x90, 0xf0},
-                {0xf0, 0x90, 0xf0, 0x10, 0xf0},
-                {0xf0, 0x90, 0xf0, 0x90, 0x90},
-                {0xe0, 0x90, 0xe0, 0x90, 0xe0},
-                {0xf0, 0x80, 0x80, 0x80, 0xf0},
-                {0xe0, 0x90, 0x90, 0x90, 0xe0},
-                {0xf0, 0x80, 0xf0, 0x80, 0xf0},
-                {0xf0, 0x80, 0xf0, 0x80, 0x80}
-            };
-            for (size_t i = 0; i < data.size(); i++) {
-                std::ranges::copy(
-                    data[i],
-                    memory.begin() + BUILT_IN_CHAR_STARTING_ADDRESS + i * (Sprite{}.size() * sizeof Sprite::value_type)
-                );
-            }
-        }
 
         // 00e0
         void sys(uint16_t address) {
@@ -208,7 +177,7 @@ namespace Chip8 {
 
         // 8x_e
         void shift_left(u4 reg) {
-            this->gp_registers[0xf] = 0x80 & this->gp_registers[reg] != 0;
+            this->gp_registers[0xf] = (0x80 & this->gp_registers[reg]) != 0;
             this->gp_registers[reg] <<= 1;
             this->program_counter += 1;
         }
@@ -337,57 +306,74 @@ namespace Chip8 {
             this->program_counter += 1;
         }
 
-### `LDB Vx` [fx33]
+        // fx33
+        void load_bcd(u4 reg) {
+            if (i_register < this->memory.size() - 2)
+                throw std::runtime_error("address outside of working memory area");
 
-**This command LoaDs the Binary coded decimal (BCD) representation of the value in register x into memory locations I, I+1, I+2.**
+            // i_register should behave like a normal u16, except that it fails when trying to write or read to invalid memory locations
+            // TODO: ensure these checks happen everywhere
+            this->memory[i_register] = this->gp_registers[reg] % 10;
+            this->memory[i_register+1] = (this->gp_registers[reg] % 100 - this->gp_registers[reg] % 10) / 10;
+            this->memory[i_register+2] = (this->gp_registers[reg] - this->gp_registers[reg] % 100) / 100;
 
-```cpp
-void load_bcd(uint8_t reg) {
-    if (reg > 15)
-        throw std::runtime_error("invalid register number");
+            // TODO: ensure that the pc increments are multiplied by 2 (1 instruction is 2 bytes)
+            this->program_counter += 1;
+        }
 
-    // TODO: should I check whether the memory location is valid?
-    memory[i_register] = this->gp_registers[reg] % 10;
-    memory[i_register+1] = (this->gp_registers[reg] % 100 - this->gp_registers[reg] % 10) / 10;
-    memory[i_register+2] = (this->gp_registers[reg] - this->gp_registers[reg] % 100) / 100;
-    this->program_counter += 1;
-}
-```
+        // fx55
+        void load_reg_to_mem(u4 reg_final) {
+            // TODO: should I check whether the memory locations are all valid? yes
+            // TODO: how to get ++ or += 1 to work w/ u4?
+            for (u4 i = 0; i <= reg_final; i++) {
+                this->memory[i_register+i] = this->gp_registers[i];
+            }
+            this->program_counter += 1;
+        }
 
-### `LDRM Vx` [fx55]
+        // fx65
+        void load_mem_to_reg(u4 reg_final) {
+            if (reg_final > 15)
+                throw std::runtime_error("invalid register number");
 
-**This command LoaDs Registers 0 through x to Memory, starting at the address stored in the i register.**
+            // TODO: should I check whether the memory locations are all valid? yes
+            for (u4 i = 0; i <= reg_final; i++) {
+                this->gp_registers[i] = this->memory[i_register+i];
+            }
+            this->program_counter += 1;
+        }
 
-```cpp
-void load_reg_to_mem(uint8_t reg_final) {
-    if (reg_final > 15)
-        throw std::runtime_error("invalid register number");
+    public:
+        Emulator() : prng_engine(rand_dev()), random_u8_dist(0, 255) {
+            sound_timer.set(0);
+            delay_timer.set(0);
 
-    // TODO: should I check whether the memory locations are all valid?
-    for (uint8_t i = 0; i <= reg_final; i++) {
-        memory[i_register+i] = this->gp_registers[i];
-    }
-    this->program_counter += 1;
-}
-```
-
-### `LDMR Vx` [fx65]
-
-**This command LoaDs values from memory starting at the i register, into registers 0 through x.**
-
-```cpp
-void load_mem_to_reg(uint8_t reg_final) {
-    if (reg_final > 15)
-        throw std::runtime_error("invalid register number");
-
-    // TODO: should I check whether the memory locations are all valid?
-    for (uint8_t i = 0; i <= reg_final; i++) {
-        this->gp_registers[i] = memory[i_register+i];
-    }
-    this->program_counter += 1;
-}
-```
-
+            using Sprite = std::array<uint8_t, 5>;
+            std::vector<Sprite> data = {
+                {0xf0, 0x90, 0x90, 0x90, 0xf0},
+                {0x20, 0x60, 0x20, 0x20, 0x70},
+                {0xf0, 0x10, 0xf0, 0x80, 0xf0},
+                {0xf0, 0x10, 0xf0, 0x10, 0xf0},
+                {0x90, 0x90, 0xf0, 0x10, 0x10},
+                {0xf0, 0x80, 0xf0, 0x10, 0xf0},
+                {0xf0, 0x80, 0xf0, 0x90, 0xf0},
+                {0xf0, 0x10, 0x20, 0x40, 0x40},
+                {0xf0, 0x90, 0xf0, 0x90, 0xf0},
+                {0xf0, 0x90, 0xf0, 0x10, 0xf0},
+                {0xf0, 0x90, 0xf0, 0x90, 0x90},
+                {0xe0, 0x90, 0xe0, 0x90, 0xe0},
+                {0xf0, 0x80, 0x80, 0x80, 0xf0},
+                {0xe0, 0x90, 0x90, 0x90, 0xe0},
+                {0xf0, 0x80, 0xf0, 0x80, 0xf0},
+                {0xf0, 0x80, 0xf0, 0x80, 0x80}
+            };
+            for (size_t i = 0; i < data.size(); i++) {
+                std::ranges::copy(
+                    data[i],
+                    memory.begin() + BUILT_IN_CHAR_STARTING_ADDRESS + i * (Sprite{}.size() * sizeof Sprite::value_type)
+                );
+            }
+        }
     };
 }
 

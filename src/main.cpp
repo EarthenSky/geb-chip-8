@@ -5,10 +5,8 @@
 
 #include "emulator.h"
 
-// TODO: next, add emulator & instructions, then move all this (probably) into that module
-
 int main(int argc, char *argv[]) {
-
+    Chip8::Emulator emulator;
 
     std::cout << "hello!" << std::endl;
     return 0;
