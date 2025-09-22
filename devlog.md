@@ -2,6 +2,8 @@
 
 Chip-8 is a programming language / virtual machine for writing small games, originally developed in the mid-1970s. This is a short devlog for making and optimizing a chip-8 interpreter.
 
+# ACT I
+
 ## first steps
 
 http://devernay.free.fr/hacks/chip8/C8TECH10.HTM is a lovely specification that details the machine and the instructions. It's important to note that there is no "official" specification for Chip-8, so you have to be sure the program you're running agrees with this specification. https://en.wikipedia.org/wiki/CHIP-8 is a good second source.
@@ -17,14 +19,6 @@ std::array<uint8_t, 4096> memory;
 ```
 
 When we want to run a Chip-8 program, we'll write the instructions byte by byte into memory. YES YOU'RE RIGHT, THIS IS DANGEROUS! Since we're sharing program and general memory, programs can modify their own code. In reality since Chip-8 programs are so small, it's not a massive problem (whew). Although, it can be a little bonus!
-
-## keyboard
-
-// TODO: write this when I have more context
-
-## display
-
-// TODO: ditto
 
 ## instructions
 
@@ -955,6 +949,30 @@ public:
 
 Now that we have all our separate components let's put them all together, then provide an interface that accepts a program in memory.
 
+### add instructions to a class
+
+The emulator class will be the root of our abstraction, allowing the emulator to be embedded in all sorts of situations.
+
+When writing the instructions for this step, I realized I could remove a lot of error checking by using bitfields to make my own unsigned 4 bit integer, `u4`.
+
+### execute instructions
+
+After the laborious task of adding all the instructions into the `Emulator` class, we now need a function that breaks down an instruction's arguments and passes them to their function.
+
+Luckily all instructions are exactly 2 bytes, so the interface gets a bit easier!
+
+```cpp
+void evaluate_instruction(uint16_t instruction) {
+    switch (instruction) {
+        case 0x00e0:
+            return this->sys();
+        // TODO: add the rest
+        default:
+            throw std::runtime_error(std::format("Hit unknown instruction: {:x}", instruction));
+    }
+}
+```
+
 ### compilation bugs
 
 I originally wrote all the components without testing, so the following are all the interesting bugs I found:
@@ -970,37 +988,111 @@ I originally wrote all the components without testing, so the following are all 
   - when initializing `std::jthread`, I tried to pass the member function by pointer. This fails for two reasons. Firstly, the class name is required. Secondly, for member functions, there is no [function-to-pointer](https://en.cppreference.com/w/cpp/language/implicit_cast.html) implicit conversion. Instead, you have a member function designator which needs to explicitly have its address taken to get a function pointer.
   - HOWEVER, even this doesn't work, likely due to the `std::stop_token` parameter, so we have to resort to using a lambda `[this](std::stop_token token) { this->poll_events(token); }`.
 
+### interpreter
+
+Passing each instruction as a byte is sufficient, but comments are helpful! We can throw together a quick preprocessing function that removes single line comments & skips whitespace lines, while producing an array of bytes.
+
+// TODO: this
+
+
+### interface
+
+Oh yeah, it's finally time. Now we've gotta load our program and execute each instruction.
+
+WARNING! This next snippet of code is going to be as difficult as the concepts behind agentic coding!
+
+```cpp
+while (this->excute_instructions) {
+    // TODO: wait... if instructions are two bytes, then we have to load them two bytes at a time...
+    // does this mean the program_counter has to increment by 2 bytes by default? (yeah I think so...)
+    this->evaluate_instruction(this->memory[this->program_counter] * 256 + this->memory[this->program_counter + 1])
+}
+```
+
+Joke... funny...
+
 ## basic tests
 
-```
+Okay, now we need to write some tests to make sure everything works as expected. Firstly, we want some unit tests to prove each new bit of functionality works properly. 
+
+### `draw_letters.chip8`
+
+```sh
 0x6103 // V1 = 0x03
 0xf129 // I = letter_sprite[V1]
 // TODO: draw the sprites out to write 314
 ```
 
-### more bugs
+### `audio_test.chip8`
 
-## display ?
+I really wasn't confident with the behaviour of SDL's audio latency, and since I didn't want to go platform-specific in order to get some kind of realtime thread for buffering audio, I left it with the current implementation.
 
-## sounds ?
+// ? In the end, I had to increase the sample rate so that the error/latency wasn't off by so much!  
+
+```sh
+
+```
+
+### `full_coverage.chip8`
+
+Now, we just need a program that manages to use every operation, but actually use it!
+
+```sh
+
+```
+
+## The Final Exam
+
+We're done! This means it's time to start running some programs real programs. Luckily for us, there have been a few game jams full of programs written in Chip8 for us play with.
+
+// TODO: this
+
+## We're not done yet, are we?
+
+No way, we've still got a lot more to do! Let's start by consulting the list.
+
+- static analysis?
+- benchmarks
+- profiling
+- optimization
+- target wasm
+- design & render 3D console
+- stereophonic sound (rotate the console?)
+
+Looks good!
+
+# ACT II
 
 ## a simple assembler language?
+
+// TODO: what do people, do
 
 ## TODO: consider static analysis
 
 Can we perform limited static analysis to detect any of the runtime errors we've implemented in the instructions above?
 
+// TODO: I'd like to at least find some of the more basic bugs!!!
+
 ## benchmarks
 
+// Let's evaluate the performance of our implementation, then compare it against some others!
 
 
-## profiling
+## profiling & optimization time!
 
-
-## optimization time!
-
-TODO: estimate using our machine how long we expect our program to take, and ask why it is taking longer given the profile.
+// TODO: estimate using our machine how long we expect our program to take, and ask why it is taking longer given the profile.
+// What's the slowest part?
 
 ## compile to web
 
-## next time: game jam of ultimate sadness
+Uh, not sure how this works but we're probably gonna have to write totally separate Display, Speaker, and Keyboard classes that use Web interfaces.
+
+# ACT III
+
+It is now finally time for...
+
+## the game jam of ultimate sadness
+
+This project has taken long enough that I'm now the biggest Chip-8 connoisseur out there. Thus, it's finally time to make a game worth playing, since everything up until now has very much felt like toys. 
+
+

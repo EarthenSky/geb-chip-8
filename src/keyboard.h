@@ -8,6 +8,7 @@
 
 #include <SDL3/SDL.h>
 
+#include "types.h"
 #include "geblib.h"
 
 namespace Chip8 {
@@ -19,6 +20,10 @@ namespace Chip8 {
         KA, KB, KC,
         KD, KE, KF
     };
+
+    Key key_from_u4(u4 x) {
+        return static_cast<Key>((size_t)x);
+    }
 
     class Keyboard {
     private:
@@ -78,7 +83,7 @@ namespace Chip8 {
         }
 
         Key block_until_next_keypress() {
-            // blocks the next keybaord event from starting, or waits until it is done
+            // blocks the next keyboard event from starting, or waits until it is done
             return this->key_channel.request();
         }
     };
