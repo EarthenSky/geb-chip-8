@@ -977,6 +977,8 @@ void evaluate_instruction(uint16_t instruction) {
 }
 ```
 
+This one is similarly long, so we can omit most of it.
+
 ### compilation bugs
 
 I originally wrote all the components without testing, so the following are all the interesting bugs I found:
@@ -994,26 +996,87 @@ I originally wrote all the components without testing, so the following are all 
 
 ### interpreter
 
-Passing each instruction as a byte is sufficient, but comments are helpful! We can throw together a quick preprocessing function that removes single line comments & skips whitespace lines, while producing an array of bytes.
+We'll want to store our programs in text files, for which a list of words is convenient (where `0xabcd` is a word)! Just like the following:
 
-// TODO: this
+```
+0x6103
+0xf129
+...
+```
 
-
-### interface
-
-Oh yeah, it's finally time. Now we've gotta load our program and execute each instruction.
-
-WARNING! This next snippet of code is going to be as difficult as the concepts behind agentic coding!
+However, we'd also like to support comments. Since our "language" is so simple, we can just ignore everything after the word on each line. The following snippet implements this, although it's a bit of a behemoth...
 
 ```cpp
-while (this->excute_instructions) {
-    // TODO: wait... if instructions are two bytes, then we have to load them two bytes at a time...
-    // does this mean the program_counter has to increment by 2 bytes by default? (yeah I think so...)
-    this->evaluate_instruction(this->memory[this->program_counter] * 256 + this->memory[this->program_counter + 1])
+// treats both \r\n and \n as line breaks
+// ignores leading whitespace
+// returns true on success, false on failure
+bool load_program(std::string program_text) {
+    std::vector<uint8_t> bytes;
+
+    size_t current_pos = 0;
+    while (current_pos != program_text.size()) {
+        size_t cr = program_text.find("\n", current_pos);
+        size_t crlf = program_text.find("\r\n", current_pos);
+        
+        size_t next_pos;
+        if (cr == std::string::npos && crlf == std::string::npos){
+            next_pos = program_text.size();
+        } else {
+            // index of \n and \r\n can never be equal
+            next_pos = std::min(cr, crlf);
+        }
+
+        std::string line = program_text.substr(current_pos, next_pos);
+        if (std::ranges::all_of(line, isspace))
+            continue;
+        
+        // line starts with the newline of the last line, but filters it here
+        size_t word_start = line.find_first_not_of(" \t\r\n\v\f");
+        if (!line.substr(word_start, line.size() - word_start).starts_with("0x"))
+            return false;
+
+        try {
+            std::string starts_with_bytes = line.substr(word_start+2, line.size() - (word_start+2));
+            uint16_t word = std::stoi(starts_with_bytes, nullptr, 16);
+            bytes.push_back((word & 0xff00) >> 8);
+            bytes.push_back(word & 0x00ff);
+        } catch (std::invalid_argument const&) {
+            return false;
+        } catch (std::out_of_range const&) {
+            return false;
+        }
+
+        current_pos = next_pos;
+    }
+
+    return this->load_program_bytes(bytes);
+}
+
+bool load_program_bytes(std::vector<uint8_t> bytes) {
+    if (bytes.size() > this->memory.size() - PROGRAM_STARTING_ADDRESS)
+        return false;
+
+    for (size_t i = 0; i < bytes.size(); i++) {
+        this->memory[PROGRAM_STARTING_ADDRESS + i] = bytes[i];
+    }
+    return true;
 }
 ```
 
-Joke... funny...
+### execution loop
+
+Ohhhh yeah. It's finally time. Now we've gotta load our program and execute the current instruction in a loop. The only gotcha here is that instructions are 2 bytes each, so we've gotta left shift the first byte to combine them.
+
+```cpp
+void block_run() {
+    while (this->continue_executing_instructions) {
+        this->evaluate_instruction(
+            this->memory[this->program_counter] << 8
+            & this->memory[this->program_counter + 1]
+        );
+    }
+}
+```
 
 ## basic tests
 

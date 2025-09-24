@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <random>
+#include <string>
 
 #include "types.h"
 #include "geblib.h"
@@ -15,6 +16,8 @@
 namespace Chip8 {
     class Emulator {
     private:
+        bool continue_executing_instructions = false;
+
         Display display;
         Keyboard keyboard;
 
@@ -44,8 +47,11 @@ namespace Chip8 {
         static const uint8_t SPRITE_WIDTH = 8;
 
         static const uint16_t BUILT_IN_CHAR_STARTING_ADDRESS = 0x100;
+        static const uint16_t PROGRAM_STARTING_ADDRESS = 0x200;
 
         static const size_t INSTRUCTION_SIZE = 2;
+
+        #pragma region Instructions
 
         // 0xxx
         void sys(uint16_t address) {
@@ -340,7 +346,8 @@ namespace Chip8 {
             this->program_counter += INSTRUCTION_SIZE;
         }
 
-    private:
+        #pragma endregion Instructions
+
         void evaluate_instruction(uint16_t instruction) {
             using GebLib::get_nibble;
 
@@ -490,6 +497,73 @@ namespace Chip8 {
                     memory.begin() + BUILT_IN_CHAR_STARTING_ADDRESS + i * (Sprite{}.size() * sizeof Sprite::value_type)
                 );
             }
+        }
+
+        /// @brief blocks until the emulator is done executing
+        /// TODO: when will continue_executing_instructions ever be false?
+        void block_run() {
+            while (this->continue_executing_instructions) {
+                // TODO: can we increment the program_counter by 2 bytes before even entering the evaluate_instruction? if so, is it equivalent? we'd save a lot of LoC for sure
+                this->evaluate_instruction(
+                    this->memory[this->program_counter] << 8
+                    & this->memory[this->program_counter + 1]
+                );
+            }
+        }
+
+        // treats both \r\n and \n as line breaks
+        // ignores leading whitespace
+        // returns true on success, false on failure
+        bool load_program(std::string program_text) {
+            std::vector<uint8_t> bytes;
+
+            size_t current_pos = 0;
+            while (current_pos != program_text.size()) {
+                size_t cr = program_text.find("\n", current_pos);
+                size_t crlf = program_text.find("\r\n", current_pos);
+                
+                size_t next_pos;
+                if (cr == std::string::npos && crlf == std::string::npos){
+                    next_pos = program_text.size();
+                } else {
+                    // index of \n and \r\n can never be equal
+                    next_pos = std::min(cr, crlf);
+                }
+
+                std::string line = program_text.substr(current_pos, next_pos);
+                if (std::ranges::all_of(line, isspace))
+                    continue;
+                
+                // line starts with the newline of the last line, but filters it here
+                size_t word_start = line.find_first_not_of(" \t\r\n\v\f");
+                if (!line.substr(word_start, line.size() - word_start).starts_with("0x"))
+                    return false;
+
+                try {
+                    std::string starts_with_bytes = line.substr(word_start+2, line.size() - (word_start+2));
+                    uint16_t word = std::stoi(starts_with_bytes, nullptr, 16);
+                    bytes.push_back((word & 0xff00) >> 8);
+                    bytes.push_back(word & 0x00ff);
+                } catch (std::invalid_argument const&) {
+                    return false;
+                } catch (std::out_of_range const&) {
+                    return false;
+                }
+
+                current_pos = next_pos;
+            }
+
+            return this->load_program_bytes(bytes);
+        }
+
+        bool load_program_bytes(std::vector<uint8_t> bytes) {
+            if (bytes.size() > this->memory.size() - PROGRAM_STARTING_ADDRESS)
+                return false;
+
+            for (size_t i = 0; i < bytes.size(); i++) {
+                this->memory[PROGRAM_STARTING_ADDRESS + i] = bytes[i];
+            }
+            return true;
         }
     };
 }
