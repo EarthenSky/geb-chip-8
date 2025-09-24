@@ -10,6 +10,10 @@ http://devernay.free.fr/hacks/chip8/C8TECH10.HTM is a lovely specification that 
 
 We'll be writing the interpreter in C++20, using SDL3 to render the screen.
 
+A few related devlogs
+- https://austinmorlan.com/posts/chip8_emulator/#16-bit-program-counter
+- https://tobiasvl.github.io/blog/write-a-chip-8-emulator/
+
 ## memory
 
 In Chip-8, the interpreter, program, and general memory all share the same address space. There are 4096 bytes of addressable memory, the first 512 of which were reserved for the interpreter. As an added bonus, the whole thing fits in the L1 cache of decades old processors!
@@ -949,27 +953,27 @@ public:
 
 Now that we have all our separate components let's put them all together, then provide an interface that accepts a program in memory.
 
-### add instructions to a class
+### add all instructions to a class
 
 The emulator class will be the root of our abstraction, allowing the emulator to be embedded in all sorts of situations.
 
-When writing the instructions for this step, I realized I could remove a lot of error checking by using bitfields to make my own unsigned 4 bit integer, `u4`.
+Improvements:
+- I realized I could remove a lot of error checking by using bitfields to make my own unsigned 4 bit integer, `u4`.
+- Fixed a big error where I forgot that instructions are 2 bytes, not 1! Thus, the program counter will increase by 2 bytes by default, not 1. However, this also brings to light another implicit requirement: "In memory, the first byte of each instruction should be located at an even addresses". Since sprites may take up an odd number of bytes, this is a requirement to program writers! We'll touch on this later when we get to static analysis, but for now we can just note it.
+  - TODO: maybe we'll wait until we see what existing programs do!
 
 ### execute instructions
 
-After the laborious task of adding all the instructions into the `Emulator` class, we now need a function that breaks down an instruction's arguments and passes them to their function.
-
-Luckily all instructions are exactly 2 bytes, so the interface gets a bit easier!
+After the laborious task of adding all the instructions into the `Emulator` class, we now need a function that breaks down an instruction's arguments and passes them to their function. Since instructions are exactly 2 bytes we can implement the following function:
 
 ```cpp
 void evaluate_instruction(uint16_t instruction) {
-    switch (instruction) {
-        case 0x00e0:
-            return this->sys();
-        // TODO: add the rest
-        default:
-            throw std::runtime_error(std::format("Hit unknown instruction: {:x}", instruction));
+    if (instruction & 0xf000 == 0x0000) {
+        this->sys(instruction & 0x0fff);
+    } else if (instruction == 0x00e0) {
+        this->cls();
     }
+    // ...
 }
 ```
 

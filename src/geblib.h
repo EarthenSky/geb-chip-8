@@ -1,7 +1,19 @@
 #ifndef GEB_LIB_H
 #define GEB_LIB_H
 
+#include <atomic>
+#include <mutex>
+#include <optional>
+
 namespace GebLib {
+    // indices are MSB to LSB of 0x0123 (left to right)
+    u4 get_nibble(uint16_t word, size_t nibble_i) {
+        if (nibble_i >= 4)
+            throw std::runtime_error("nibble_i must be in [0, 3]");
+        auto num_shifts = 4 * (3 - nibble_i); // 4 bits per nibble
+        return (word & 0xf << num_shifts) >> num_shifts;
+    }
+
     namespace Threading {
         /// @brief a channel allowing a consumer to request the next item from the producer, and the producer to decide when to
         /// accept a request.

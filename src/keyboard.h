@@ -2,9 +2,7 @@
 #define KEYBOARD_H
 
 #include <atomic>
-#include <thread>
 #include <stop_token>
-#include <optional>
 
 #include <SDL3/SDL.h>
 
@@ -20,10 +18,6 @@ namespace Chip8 {
         KA, KB, KC,
         KD, KE, KF
     };
-
-    Key key_from_u4(u4 x) {
-        return static_cast<Key>((size_t)x);
-    }
 
     class Keyboard {
     private:
