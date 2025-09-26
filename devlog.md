@@ -1084,18 +1084,37 @@ Okay, now we need to write some tests to make sure everything works as expected.
 
 ### `draw_letters.chip8`
 
-Lets start with a basic program that draws some numbers on the screen.
-
-// TODO: finish this program!
+Lets start with a basic program that draws some numbers on the screen. Since the display is 64 pixels wide by 32 pixels tall, and each character is 4 pixels wide by 5 pixels tall, we can easily fit the digits `314`. I've put comments after each instruction describing what it does. Comments on an empty line are address labels, telling us what the address is. It's easy to get this wrong, so when writing a program please double check your work!
 
 ```sh
+// 0x200:
 0x6103 // V1 = 0x03
-0xf129 // I = letter_sprite[V1]
-0x6101 // V1 = 0x01
 0x6201 // V2 = 0x01
-0xd125 // draw_sprite(V1, V2, 5)
-// TODO: draw the sprites out to write 314
+0x6301 // V3 = 0x01
+0xf129 // I = letter_sprite[V1]
+0xd125 // draw_sprite(V2, V3, 5)
+
+0x6103 // V1 = 0x01
+0x6201 // V2 = 0x06
+0x6301 // V3 = 0x02
+0xf129 // I = letter_sprite[V1]
+0xd125 // draw_sprite(V2, V3, 5)
+
+0x6103 // V1 = 0x04
+0x6201 // V2 = 0x11
+0x6301 // V3 = 0x03
+0xf129 // I = letter_sprite[V1]
+0xd125 // draw_sprite(V2, V3, 5)
+
+// 0x220:
+0x1220 // goto 0x220
 ```
+
+But wait... Chip-8 doesn't have an exit instruction. If so, how do we end our program? In my very minor research, I found a good "end of program" signal is to jump to the current address. We can implement this by changing the return type of `Emulator::evaluate_instruction` to `bool`, and returning true if a halting infinite loop (guaranteed no more side-effects) is found.
+
+TADA!
+
+
 
 ### `audio_test.chip8`
 

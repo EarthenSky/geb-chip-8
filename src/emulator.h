@@ -16,8 +16,6 @@
 namespace Chip8 {
     class Emulator {
     private:
-        bool continue_executing_instructions = false;
-
         Display display;
         Keyboard keyboard;
 
@@ -348,7 +346,9 @@ namespace Chip8 {
 
         #pragma endregion Instructions
 
-        void evaluate_instruction(uint16_t instruction) {
+        /// @brief returns true if the program is in an infinite loop and will never change state. Only guaranteed to
+        /// find easy examples, like jumping to the current address. 
+        bool evaluate_instruction(uint16_t instruction) {
             using GebLib::get_nibble;
 
             if (instruction & 0xf000 == 0x0000) {
@@ -358,7 +358,10 @@ namespace Chip8 {
             } else if (instruction == 0x00ee) {
                 this->ret();
             } else if (instruction & 0xf000 == 0x1000) {
-                this->jp(instruction & 0x0fff);
+                uint16_t target_address = instruction & 0x0fff;
+                this->jp(target_address);
+                if (target_address == program_counter)
+                    return true;
             } else if (instruction & 0xf000 == 0x2000) {
                 this->call(instruction & 0x0fff);
             } else if (instruction & 0xf000 == 0x3000) {
@@ -465,9 +468,12 @@ namespace Chip8 {
             } else {
                 throw std::runtime_error(std::format("Hit unknown instruction: {:x}", instruction));
             }
+            return false;
         }
 
     public:
+        bool continue_executing_instructions = false;
+
         Emulator() : prng_engine(rand_dev()), random_u8_dist(0, 255) {
             sound_timer.set(0);
             delay_timer.set(0);
@@ -500,14 +506,17 @@ namespace Chip8 {
         }
 
         /// @brief blocks until the emulator is done executing
-        /// TODO: when will continue_executing_instructions ever be false?
         void block_run() {
+            // this->continue_executing_instructions must be modified by another thread to end execution
             while (this->continue_executing_instructions) {
-                // TODO: can we increment the program_counter by 2 bytes before even entering the evaluate_instruction? if so, is it equivalent? we'd save a lot of LoC for sure
-                this->evaluate_instruction(
+                // TODO: can we increment the program_counter by 2 bytes before even entering the evaluate_instruction?
+                // if so, is it equivalent? we'd save a lot of LoC for sure
+                bool should_end_execution = this->evaluate_instruction(
                     this->memory[this->program_counter] << 8
                     & this->memory[this->program_counter + 1]
                 );
+                if (should_end_execution)
+                    return;
             }
         }
 
