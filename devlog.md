@@ -1080,13 +1080,20 @@ void block_run() {
 
 ## basic tests
 
-Okay, now we need to write some tests to make sure everything works as expected. Firstly, we want some unit tests to prove each new bit of functionality works properly. 
+Okay, now we need to write some tests to make sure everything works as expected. We want some unit tests to prove each new bit of functionality works properly. 
 
 ### `draw_letters.chip8`
+
+Lets start with a basic program that draws some numbers on the screen.
+
+// TODO: finish this program!
 
 ```sh
 0x6103 // V1 = 0x03
 0xf129 // I = letter_sprite[V1]
+0x6101 // V1 = 0x01
+0x6201 // V2 = 0x01
+0xd125 // draw_sprite(V1, V2, 5)
 // TODO: draw the sprites out to write 314
 ```
 
