@@ -20,14 +20,18 @@ int main(int argc, char *argv[]) {
         std::ifstream chip8_file(file_path);
         chip8_file.read(program_string.data(), size);
 
-        Chip8::Emulator emulator;
-        if (!emulator.load_program(program_string, true)) {
+        Chip8::Emulator<false> emulator;
+        if (!emulator.load_program(program_string)) {
             std::cout << "ERROR: invalid program. please fix error before running again" << std::endl;
             exit(1);
         }
 
         // the user doesn't have a great way of stopping the program aside from killing the process, but oh well!
-        emulator.block_run(true);
+        emulator.block_run();
+
+        std::cout << "Press any key to exit..." << std::endl; 
+        std::string _line;
+        std::getline(std::cin, _line);
         return 0;
     } catch (const std::exception& e) {
         std::cout << "ERROR: " << e.what() << std::endl;

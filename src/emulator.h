@@ -14,6 +14,7 @@
 #include "speaker.h"
 
 namespace Chip8 {
+    template<bool DEBUG = false>
     class Emulator {
     private:
         static const uint16_t BUILT_IN_CHAR_STARTING_ADDRESS = 0x100;
@@ -36,6 +37,8 @@ namespace Chip8 {
 
         // store the address the interpreter should return to after a subroutine
         std::array<uint16_t, 16> stack_frames;
+        // points at the largest unused stack frame
+        // TODO: what happens if we call a 17th function?
         uint8_t stack_pointer = 0;
 
         static const size_t NUM_GP_REGISTERS = 16;
@@ -67,8 +70,11 @@ namespace Chip8 {
             if (this->stack_pointer == 0)
                 throw std::runtime_error("cannot RET when stack is empty");
 
-            this->program_counter = this->stack_frames[this->stack_pointer];
+            if (DEBUG)
+                std::cout << "RET " << this->stack_frames[0] << std::endl;
+
             this->stack_pointer -= 1;
+            this->program_counter = this->stack_frames[this->stack_pointer];
         }
 
         // 1xxx
@@ -81,15 +87,16 @@ namespace Chip8 {
         void call(uint16_t target_address) {
             if (this->stack_pointer > 15)
                 throw std::runtime_error("cannot CALL when stack is full (stack overflow!)");
-            else if (target_address < this->memory.size() - 1)
-                // TODO: what if program_counter is 4096-1 ? do we overflow, or raise an error?
-                // don't overflow; instead raise an error
+            else if (target_address >= this->memory.size() - 1)
                 // TODO: static analysis
-                throw std::runtime_error("call address outside of working memory area");
+                throw std::runtime_error(std::format("call address=0x{:x} outside of working memory area", target_address));
                 
             this->stack_frames[this->stack_pointer] = this->program_counter + INSTRUCTION_SIZE;
             this->stack_pointer += 1;
             this->program_counter = target_address;
+
+            if (DEBUG)
+                std::cout << "CALL " << this->stack_frames[0] << std::endl;
         }
 
         // 3xyy
@@ -127,6 +134,7 @@ namespace Chip8 {
 
         // 7xyy
         void add(u4 reg, uint8_t y) {
+            // overflow totally may occur
             this->gp_registers[reg] += y;
             this->program_counter += INSTRUCTION_SIZE;
         }
@@ -211,8 +219,6 @@ namespace Chip8 {
         // bxxx
         void jump_reg0(uint16_t address_offset) {
             // TODO: what to do if we get outside the range of addresses?
-            // Q: when we increment the program_counter by 1, does it increase by 2 bytes?
-            // A: pretty sure no
             this->program_counter = (uint16_t)this->gp_registers[0] + address_offset;
         }
 
@@ -244,12 +250,14 @@ namespace Chip8 {
                 }
             }
 
-            std::cout << "NEW DISPLAY STATE" << std::endl;
-            for (size_t y = 0; y < Display::SCREEN_HEIGHT; y++) {
-                for (size_t x = 0; x < Display::SCREEN_WIDTH; x++) {
-                    std::cout << this->display.buffer[y * Display::SCREEN_WIDTH + x];
+            if (DEBUG) {
+                std::cout << "NEW DISPLAY STATE" << std::endl;
+                for (size_t y = 0; y < Display::SCREEN_HEIGHT; y++) {
+                    for (size_t x = 0; x < Display::SCREEN_WIDTH; x++) {
+                        std::cout << this->display.buffer[y * Display::SCREEN_WIDTH + x];
+                    }
+                    std::cout << std::endl;
                 }
-                std::cout << std::endl;
             }
 
             // TODO: is there a fancy way to do this & the 0xf register thingy using only a single thread (& std::transform or similar)?
@@ -311,16 +319,20 @@ namespace Chip8 {
 
         // fx29
         void load_sprite(u4 reg) {
-            std::cout << reg << std::endl;
-            std::cout << (size_t)this->gp_registers[reg] << std::endl;
+            if (DEBUG) {
+                std::cout << reg << std::endl;
+                std::cout << (size_t)this->gp_registers[reg] << std::endl;
+            }
             this->i_register = BUILT_IN_CHAR_STARTING_ADDRESS + 5 * (this->gp_registers[reg] % 16);
             this->program_counter += INSTRUCTION_SIZE;
         }
 
         // fx33
         void load_bcd(u4 reg) {
-            if (i_register < this->memory.size() - 2)
-                throw std::runtime_error("address outside of working memory area");
+            if (i_register >= (this->memory.size() - 2))
+                throw std::runtime_error(
+                    std::format("i_register=0x{:x} assignment outside of working memory area", i_register)
+                );
 
             // i_register should behave like a normal u16, except that it fails when trying to write or read to invalid memory locations
             // TODO: ensure these checks happen everywhere
@@ -360,17 +372,21 @@ namespace Chip8 {
         bool evaluate_instruction(uint16_t instruction) {
             using GebLib::get_nibble;
 
-            if ((instruction & 0xf000) == 0x0000) {
-                this->sys(instruction & 0x0fff);
-            } else if (instruction == 0x00e0) {
+            if (instruction == 0x00e0) {
                 this->cls();
             } else if (instruction == 0x00ee) {
                 this->ret();
+            } else if ((instruction & 0xf000) == 0x0000) {
+                this->sys(instruction & 0x0fff);
             } else if ((instruction & 0xf000) == 0x1000) {
                 uint16_t target_address = instruction & 0x0fff;
-                this->jp(target_address);
-                if (target_address == program_counter)
+                if (target_address == this->program_counter) {
+                    this->jp(target_address);
                     return true;
+                } else {
+                    this->jp(target_address);
+                    return false;
+                }
             } else if ((instruction & 0xf000) == 0x2000) {
                 this->call(instruction & 0x0fff);
             } else if ((instruction & 0xf000) == 0x3000) {
@@ -463,7 +479,6 @@ namespace Chip8 {
                 u4 x = get_nibble(instruction, 1);
                 this->increment_i_reg(x);
             } else if ((instruction & 0xf0ff) == 0xf029) {
-                std::cout << "setting i register!" << std::endl;
                 u4 x = get_nibble(instruction, 1);
                 this->load_sprite(x);
             } else if ((instruction & 0xf0ff) == 0xf033) {
@@ -516,13 +531,13 @@ namespace Chip8 {
         }
 
         /// @brief blocks until the emulator is done executing
-        void block_run(bool debug = false) {
-            if (debug)
+        void block_run() {
+            if (DEBUG)
                 std::cout << "Running program..." << std::endl;
 
             // this->continue_executing_instructions must be modified by another thread to end execution
             while (this->continue_executing_instructions) {
-                if (debug) {
+                if (DEBUG) {
                     std::cout << "program_counter = " << std::format("{:x}", program_counter) << std::endl;
                     std::cout << "i_register = " << std::format("{:x}", i_register) << std::endl;
                     std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -543,15 +558,16 @@ namespace Chip8 {
         // ignores leading whitespace
         // ignores all lines that do not start with 0x (after leading whitespace)
         // returns true on success, false on failure
-        bool load_program(std::string program_text, bool debug = false) {
-            if (debug)
+        bool load_program(std::string program_text) {
+            if (DEBUG)
                 std::cout << "Loading program with text: " << program_text << std::endl;
 
             std::vector<uint8_t> bytes;
 
             size_t next_pos = 0;
             for (size_t current_pos = 0; current_pos < program_text.size(); current_pos = next_pos) {
-                std::cout << "current_pos = " << current_pos << std::endl;
+                if (DEBUG)
+                    std::cout << "current_pos = " << current_pos << std::endl;
 
                 // index of \n and \r\n can never be equal (unless they're both npos)
                 size_t cr = program_text.find("\n", current_pos);
@@ -593,7 +609,8 @@ namespace Chip8 {
 
             for (size_t i = 0; i < bytes.size(); i++) {
                 this->memory[PROGRAM_STARTING_ADDRESS + i] = bytes[i];
-                std::cout << (size_t)this->memory[PROGRAM_STARTING_ADDRESS + i] << " @ " << (PROGRAM_STARTING_ADDRESS + i) << std::endl;
+                if (DEBUG)
+                    std::cout << (size_t)this->memory[PROGRAM_STARTING_ADDRESS + i] << " @ " << (PROGRAM_STARTING_ADDRESS + i) << std::endl;
             }
             return true;
         }

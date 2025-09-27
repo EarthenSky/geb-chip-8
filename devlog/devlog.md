@@ -1116,7 +1116,8 @@ TADA!
 
 ![blank screen](blank.png)
 
-// TODO: add an infinite loop before leaving, so we can see our picture!
+Aw...
+
 // TODO: add a function for getting the display state after the last instruction, for test purposes.
 
 Here are all the bugs found:
@@ -1132,7 +1133,65 @@ Here are all the bugs found:
 - ZII
   - One might think that c++ `std::array` is smart enough to zero initialize. One would be wrong.
 
+And now!
+
+![314 displayed on the screen](success.png)
+
+### `random_decimal_digits.chip8`
+
+This next example tests function calls, random numbers, jumps, and conditionals. While writing it, I noticed some serious issues with the language!
+
+1. **No `O(1)` comparison operator.** I can imagine a language having only less than, but this language has none! Instead, one can only ask whether a number is greater than 2^i. HOWEVER, using the bcd function, we can check base 10 easily. Of course, we can always decrease a number in a loop and check whether it's equal to a constant, however this takes `O(n)` time!
+
+2. No labels. This is a problem with our small interpreter that converts our text into bytes. It's not possible to place a procedure at an arbitrary memory location without manually padding it. This unfortunately means small changes can required lots of hard coded addresses to be modified! I'll look at implementing some utilities for this in the future.
+
+TODO: do we need to clear the screen by default?
+
+```c
+// 0x200:
+0x6201 // V2 = xpos = 0x01
+0x6301 // V3 = ypos = 0x01
+0x640a // V4 = num_digits = 0x0a
+
+// 0x206:
+0x2216 // V1 = random_decimal(); V0 = ---; I = ---;
+0xf129 // I = letter_sprite[V1]
+0xd235 // draw_sprite(V2, V3, 5)
+0x7205 // V2 += 5
+0x74ff // V4 = (V4 + 255) % 256 = V4 - 1
+0x3400 // skip next if V4 == 0
+0x1206 // goto 0x206
+
+// 0x214:
+0x1214 // end of program
+
+// 0x216:
+// int random_decimal()
+0xc10f // V1 = rand(0, 15)
+0xa226 // I = 0x226
+0xf133 // [I..I+2] = bcd(V1)
+0xa227 // I = 0x227
+0xf065 // V0 = memory[I]
+0x3000 // skip next if V0 == 0
+0x1216 // goto 0x216
+0x00ee // ret
+
+// 0x226
+// nothing should be here
+0x0000
+0x0000
+```
+
+Bugs:
+- only small things like off by one errors, or bitwise operator accidents
+
+2/2 tests down!
+
+> I'm not entirely sure how to measure whether the RNG is good enough, although it seems to be uniform enough given a small sample of 50 digits.
+
 ### `audio_test.chip8`
+
+// TODO: this next! test audio AND user input at the same time.
 
 I really wasn't confident with the behaviour of SDL's audio latency, and since I didn't want to go platform-specific in order to get some kind of realtime thread for buffering audio, I left it with the current implementation.
 

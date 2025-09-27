@@ -1,0 +1,32 @@
+// 0x200:
+0x6201 // V2 = xpos = 0x01
+0x6301 // V3 = ypos = 0x01
+0x640a // V4 = num_digits = 0x0a
+
+// 0x206:
+0x2216 // V1 = random_decimal(); V0 = ---; I = ---;
+0xf129 // I = letter_sprite[V1]
+0xd235 // draw_sprite(V2, V3, 5)
+0x7205 // V2 += 5
+0x74ff // V4 = (V4 + 255) % 256 = V4 - 1
+0x3400 // skip next if V4 == 0
+0x1206 // goto 0x206
+
+// 0x214:
+0x1214 // end of program
+
+// 0x216:
+// int random_decimal()
+0xc10f // V1 = rand(0, 15)
+0xa226 // I = 0x226
+0xf133 // [I..I+2] = bcd(V1)
+0xa227 // I = 0x227
+0xf065 // V0 = memory[I]
+0x3000 // skip next if V0 == 0
+0x1216 // goto 0x216
+0x00ee // ret
+
+// 0x226
+// nothing should be here
+0x0000
+0x0000
