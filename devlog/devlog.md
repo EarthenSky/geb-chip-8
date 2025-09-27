@@ -1092,19 +1092,19 @@ Lets start with a basic program that draws some numbers on the screen. Since the
 0x6201 // V2 = 0x01
 0x6301 // V3 = 0x01
 0xf129 // I = letter_sprite[V1]
-0xd125 // draw_sprite(V2, V3, 5)
+0xd235 // draw_sprite(V2, V3, 5)
 
-0x6103 // V1 = 0x01
-0x6201 // V2 = 0x06
-0x6301 // V3 = 0x02
+0x6101 // V1 = 0x01
+0x6206 // V2 = 0x06
+0x6302 // V3 = 0x02
 0xf129 // I = letter_sprite[V1]
-0xd125 // draw_sprite(V2, V3, 5)
+0xd235 // draw_sprite(V2, V3, 5)
 
-0x6103 // V1 = 0x04
-0x6201 // V2 = 0x11
-0x6301 // V3 = 0x03
+0x6104 // V1 = 0x04
+0x620b // V2 = 0x0b
+0x6303 // V3 = 0x03
 0xf129 // I = letter_sprite[V1]
-0xd125 // draw_sprite(V2, V3, 5)
+0xd235 // draw_sprite(V2, V3, 5)
 
 // 0x220:
 0x1220 // goto 0x220
@@ -1114,7 +1114,23 @@ But wait... Chip-8 doesn't have an exit instruction. If so, how do we end our pr
 
 TADA!
 
+![blank screen](blank.png)
 
+// TODO: add an infinite loop before leaving, so we can see our picture!
+// TODO: add a function for getting the display state after the last instruction, for test purposes.
+
+Here are all the bugs found:
+- Early continue
+  - This is a bit of an embarrassing mistake to make. In `Emulator::load_program`, I forgot to set `current_pos = next_pos` before continuing.
+- Off by 2 error
+  - When finding each EOL character, I forgot to start with the character AFTER the newline(s), so it will repeatedly match the first match!
+- Conditional stop token check
+  - In the keyboard polling thread, we only check for the stop token when there is an event to accept! While `SDL_PollEvent` returns false, the thread will continue forever. 
+- Operator precedence
+  - Both shift operators have higher precedence than addition or multiplication. Since lower precedence is combined first, we get that  `x << 1 + x << 2` is `x << (1 + x) << 2`.
+  - All bitwise operators have higher precedence than equality, so `x & 0xf0 == 0` is `x & (0xf0 == 0)`.
+- ZII
+  - One might think that c++ `std::array` is smart enough to zero initialize. One would be wrong.
 
 ### `audio_test.chip8`
 

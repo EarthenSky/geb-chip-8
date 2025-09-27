@@ -18,6 +18,9 @@ namespace Chip8 {
 
     public:
         Display() {
+            // zero init the display buffer!
+            std::ranges::fill(this->buffer, 0);
+
             if (!SDL_Init(SDL_INIT_VIDEO))
                 throw std::runtime_error(std::format("SDL_Init error: {}\n", SDL_GetError()));
 

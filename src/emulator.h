@@ -16,6 +16,12 @@
 namespace Chip8 {
     class Emulator {
     private:
+        static const uint16_t BUILT_IN_CHAR_STARTING_ADDRESS = 0x100;
+        static const uint16_t PROGRAM_STARTING_ADDRESS = 0x200;
+
+        static const size_t INSTRUCTION_SIZE = 2;
+        static const uint8_t SPRITE_WIDTH = 8;
+
         Display display;
         Keyboard keyboard;
 
@@ -26,7 +32,7 @@ namespace Chip8 {
 
         std::array<uint8_t, 4096> memory;
 
-        uint16_t program_counter;
+        uint16_t program_counter = PROGRAM_STARTING_ADDRESS;
 
         // store the address the interpreter should return to after a subroutine
         std::array<uint16_t, 16> stack_frames;
@@ -35,19 +41,12 @@ namespace Chip8 {
         static const size_t NUM_GP_REGISTERS = 16;
         std::array<uint8_t, NUM_GP_REGISTERS> gp_registers;
 
-        uint16_t i_register;
+        uint16_t i_register = 0;
 
         // setup prng
         std::random_device rand_dev;
         std::default_random_engine prng_engine;
         std::uniform_int_distribution<unsigned int> random_u8_dist;
-
-        static const uint8_t SPRITE_WIDTH = 8;
-
-        static const uint16_t BUILT_IN_CHAR_STARTING_ADDRESS = 0x100;
-        static const uint16_t PROGRAM_STARTING_ADDRESS = 0x200;
-
-        static const size_t INSTRUCTION_SIZE = 2;
 
         #pragma region Instructions
 
@@ -245,6 +244,14 @@ namespace Chip8 {
                 }
             }
 
+            std::cout << "NEW DISPLAY STATE" << std::endl;
+            for (size_t y = 0; y < Display::SCREEN_HEIGHT; y++) {
+                for (size_t x = 0; x < Display::SCREEN_WIDTH; x++) {
+                    std::cout << this->display.buffer[y * Display::SCREEN_WIDTH + x];
+                }
+                std::cout << std::endl;
+            }
+
             // TODO: is there a fancy way to do this & the 0xf register thingy using only a single thread (& std::transform or similar)?
 
             this->display.render_buffer();
@@ -304,6 +311,8 @@ namespace Chip8 {
 
         // fx29
         void load_sprite(u4 reg) {
+            std::cout << reg << std::endl;
+            std::cout << (size_t)this->gp_registers[reg] << std::endl;
             this->i_register = BUILT_IN_CHAR_STARTING_ADDRESS + 5 * (this->gp_registers[reg] % 16);
             this->program_counter += INSTRUCTION_SIZE;
         }
@@ -351,118 +360,119 @@ namespace Chip8 {
         bool evaluate_instruction(uint16_t instruction) {
             using GebLib::get_nibble;
 
-            if (instruction & 0xf000 == 0x0000) {
+            if ((instruction & 0xf000) == 0x0000) {
                 this->sys(instruction & 0x0fff);
             } else if (instruction == 0x00e0) {
                 this->cls();
             } else if (instruction == 0x00ee) {
                 this->ret();
-            } else if (instruction & 0xf000 == 0x1000) {
+            } else if ((instruction & 0xf000) == 0x1000) {
                 uint16_t target_address = instruction & 0x0fff;
                 this->jp(target_address);
                 if (target_address == program_counter)
                     return true;
-            } else if (instruction & 0xf000 == 0x2000) {
+            } else if ((instruction & 0xf000) == 0x2000) {
                 this->call(instruction & 0x0fff);
-            } else if (instruction & 0xf000 == 0x3000) {
+            } else if ((instruction & 0xf000) == 0x3000) {
                 u4 x = get_nibble(instruction, 1);
                 uint8_t y = instruction & 0x00ff;
                 this->skip_equal(x, y);
-            } else if (instruction & 0xf000 == 0x4000) {
+            } else if ((instruction & 0xf000) == 0x4000) {
                 u4 x = get_nibble(instruction, 1);
                 uint8_t y = instruction & 0x00ff;
                 this->skip_not_equal(x, y);
-            } else if (instruction & 0xf00f == 0x5000) {
+            } else if ((instruction & 0xf00f) == 0x5000) {
                 u4 x = get_nibble(instruction, 1);
                 u4 y = get_nibble(instruction, 2);
                 this->skip_equal_reg(x, y);
-            } else if (instruction & 0xf000 == 0x6000) {
+            } else if ((instruction & 0xf000) == 0x6000) {
                 u4 x = get_nibble(instruction, 1);
                 uint8_t y = instruction & 0x00ff;
                 this->load(x, y);
-            } else if (instruction & 0xf000 == 0x7000) {
+            } else if ((instruction & 0xf000) == 0x7000) {
                 u4 x = get_nibble(instruction, 1);
                 uint8_t y = instruction & 0x00ff;
                 this->add(x, y);
-            } else if (instruction & 0xf00f == 0x8000) {
+            } else if ((instruction & 0xf00f) == 0x8000) {
                 u4 x = get_nibble(instruction, 1);
                 u4 y = get_nibble(instruction, 2);
                 this->load_reg(x, y);
-            } else if (instruction & 0xf00f == 0x8001) {
+            } else if ((instruction & 0xf00f) == 0x8001) {
                 u4 x = get_nibble(instruction, 1);
                 u4 y = get_nibble(instruction, 2);
                 this->bitwise_or(x, y);
-            } else if (instruction & 0xf00f == 0x8002) {
+            } else if ((instruction & 0xf00f) == 0x8002) {
                 u4 x = get_nibble(instruction, 1);
                 u4 y = get_nibble(instruction, 2);
                 this->bitwise_and(x, y);
-            } else if (instruction & 0xf00f == 0x8003) {
+            } else if ((instruction & 0xf00f) == 0x8003) {
                 u4 x = get_nibble(instruction, 1);
                 u4 y = get_nibble(instruction, 2);
                 this->bitwise_xor(x, y);
-            } else if (instruction & 0xf00f == 0x8004) {
+            } else if ((instruction & 0xf00f) == 0x8004) {
                 u4 x = get_nibble(instruction, 1);
                 u4 y = get_nibble(instruction, 2);
                 this->carry_add_reg(x, y);
-            } else if (instruction & 0xf00f == 0x8005) {
+            } else if ((instruction & 0xf00f) == 0x8005) {
                 u4 x = get_nibble(instruction, 1);
                 u4 y = get_nibble(instruction, 2);
                 this->carry_sub_reg(x, y);
-            } else if (instruction & 0xf00f == 0x8006) {
+            } else if ((instruction & 0xf00f) == 0x8006) {
                 u4 x = get_nibble(instruction, 1);
                 this->shift_right(x);
-            } else if (instruction & 0xf00f == 0x8007) {
+            } else if ((instruction & 0xf00f) == 0x8007) {
                 u4 x = get_nibble(instruction, 1);
                 u4 y = get_nibble(instruction, 2);
                 this->subtract_reversed(x, y);
-            } else if (instruction & 0xf00f == 0x800e) {
+            } else if ((instruction & 0xf00f) == 0x800e) {
                 u4 x = get_nibble(instruction, 1);
                 this->shift_left(x);
-            } else if (instruction & 0xf00f == 0x9000) {
+            } else if ((instruction & 0xf00f) == 0x9000) {
                 u4 x = get_nibble(instruction, 1);
                 u4 y = get_nibble(instruction, 2);
                 this->skip_not_equal_reg(x, y);
-            } else if (instruction & 0xf000 == 0xa000) {
+            } else if ((instruction & 0xf000) == 0xa000) {
                 this->load_address(instruction & 0x0fff);
-            } else if (instruction & 0xf000 == 0xb000) {
+            } else if ((instruction & 0xf000) == 0xb000) {
                 this->jump_reg0(instruction & 0x0fff);
-            } else if (instruction & 0xf000 == 0xc000) {
+            } else if ((instruction & 0xf000) == 0xc000) {
                 u4 x = get_nibble(instruction, 1);
                 uint8_t y = instruction & 0x00ff;
                 this->random_int(x, y);
-            } else if (instruction & 0xf000 == 0xd000) {
+            } else if ((instruction & 0xf000) == 0xd000) {
                 u4 x = get_nibble(instruction, 1);
                 u4 y = get_nibble(instruction, 2);
                 u4 z = get_nibble(instruction, 3);
                 this->draw_sprite(x, y, z);
-            } else if (instruction & 0xf0ff == 0xe09e) {
+            } else if ((instruction & 0xf0ff) == 0xe09e) {
                 u4 x = get_nibble(instruction, 1);
                 this->skip_if_key_press(x);
-            } else if (instruction & 0xf0ff == 0xf007) {
+            } else if ((instruction & 0xf0ff) == 0xf007) {
                 u4 x = get_nibble(instruction, 1);
                 this->load_from_delay_timer(x);
-            } else if (instruction & 0xf0ff == 0xf00a) {
+            } else if ((instruction & 0xf0ff) == 0xf00a) {
                 u4 x = get_nibble(instruction, 1);
                 this->load_from_next_keypress(x);
-            } else if (instruction & 0xf0ff == 0xf015) {
+            } else if ((instruction & 0xf0ff) == 0xf015) {
                 u4 x = get_nibble(instruction, 1);
                 this->set_delay(x);
-            } else if (instruction & 0xf0ff == 0xf018) {
+            } else if ((instruction & 0xf0ff) == 0xf018) {
                 u4 x = get_nibble(instruction, 1);
                 this->set_sound(x);
-            } else if (instruction & 0xf0ff == 0xf01e) {
+            } else if ((instruction & 0xf0ff) == 0xf01e) {
                 u4 x = get_nibble(instruction, 1);
                 this->increment_i_reg(x);
-            } else if (instruction & 0xf0ff == 0xf029) {
+            } else if ((instruction & 0xf0ff) == 0xf029) {
+                std::cout << "setting i register!" << std::endl;
                 u4 x = get_nibble(instruction, 1);
                 this->load_sprite(x);
-            } else if (instruction & 0xf0ff == 0xf033) {
+            } else if ((instruction & 0xf0ff) == 0xf033) {
                 u4 x = get_nibble(instruction, 1);
                 this->load_bcd(x);
-            } else if (instruction & 0xf0ff == 0xf055) {
+            } else if ((instruction & 0xf0ff) == 0xf055) {
                 u4 x = get_nibble(instruction, 1);
                 this->load_reg_to_mem(x);
-            } else if (instruction & 0xf0ff == 0xf065) {
+            } else if ((instruction & 0xf0ff) == 0xf065) {
                 u4 x = get_nibble(instruction, 1);
                 this->load_mem_to_reg(x);
             } else {
@@ -472,7 +482,7 @@ namespace Chip8 {
         }
 
     public:
-        bool continue_executing_instructions = false;
+        bool continue_executing_instructions = true;
 
         Emulator() : prng_engine(rand_dev()), random_u8_dist(0, 255) {
             sound_timer.set(0);
@@ -506,14 +516,23 @@ namespace Chip8 {
         }
 
         /// @brief blocks until the emulator is done executing
-        void block_run() {
+        void block_run(bool debug = false) {
+            if (debug)
+                std::cout << "Running program..." << std::endl;
+
             // this->continue_executing_instructions must be modified by another thread to end execution
             while (this->continue_executing_instructions) {
+                if (debug) {
+                    std::cout << "program_counter = " << std::format("{:x}", program_counter) << std::endl;
+                    std::cout << "i_register = " << std::format("{:x}", i_register) << std::endl;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                }
+
                 // TODO: can we increment the program_counter by 2 bytes before even entering the evaluate_instruction?
                 // if so, is it equivalent? we'd save a lot of LoC for sure
                 bool should_end_execution = this->evaluate_instruction(
-                    this->memory[this->program_counter] << 8
-                    & this->memory[this->program_counter + 1]
+                    (this->memory[this->program_counter] << 8)
+                    + this->memory[this->program_counter + 1]
                 );
                 if (should_end_execution)
                     return;
@@ -522,31 +541,36 @@ namespace Chip8 {
 
         // treats both \r\n and \n as line breaks
         // ignores leading whitespace
+        // ignores all lines that do not start with 0x (after leading whitespace)
         // returns true on success, false on failure
-        bool load_program(std::string program_text) {
+        bool load_program(std::string program_text, bool debug = false) {
+            if (debug)
+                std::cout << "Loading program with text: " << program_text << std::endl;
+
             std::vector<uint8_t> bytes;
 
-            size_t current_pos = 0;
-            while (current_pos != program_text.size()) {
+            size_t next_pos = 0;
+            for (size_t current_pos = 0; current_pos < program_text.size(); current_pos = next_pos) {
+                std::cout << "current_pos = " << current_pos << std::endl;
+
+                // index of \n and \r\n can never be equal (unless they're both npos)
                 size_t cr = program_text.find("\n", current_pos);
                 size_t crlf = program_text.find("\r\n", current_pos);
-                
-                size_t next_pos;
                 if (cr == std::string::npos && crlf == std::string::npos){
                     next_pos = program_text.size();
+                } else if (cr < crlf) {
+                    next_pos = cr + 1;
                 } else {
-                    // index of \n and \r\n can never be equal
-                    next_pos = std::min(cr, crlf);
+                    next_pos = crlf + 2;
                 }
 
                 std::string line = program_text.substr(current_pos, next_pos);
                 if (std::ranges::all_of(line, isspace))
                     continue;
-                
-                // line starts with the newline of the last line, but filters it here
+
                 size_t word_start = line.find_first_not_of(" \t\r\n\v\f");
                 if (!line.substr(word_start, line.size() - word_start).starts_with("0x"))
-                    return false;
+                    continue;
 
                 try {
                     std::string starts_with_bytes = line.substr(word_start+2, line.size() - (word_start+2));
@@ -558,8 +582,6 @@ namespace Chip8 {
                 } catch (std::out_of_range const&) {
                     return false;
                 }
-
-                current_pos = next_pos;
             }
 
             return this->load_program_bytes(bytes);
@@ -571,6 +593,7 @@ namespace Chip8 {
 
             for (size_t i = 0; i < bytes.size(); i++) {
                 this->memory[PROGRAM_STARTING_ADDRESS + i] = bytes[i];
+                std::cout << (size_t)this->memory[PROGRAM_STARTING_ADDRESS + i] << " @ " << (PROGRAM_STARTING_ADDRESS + i) << std::endl;
             }
             return true;
         }

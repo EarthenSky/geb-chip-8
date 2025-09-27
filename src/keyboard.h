@@ -30,7 +30,7 @@ namespace Chip8 {
         GebLib::Threading::ChannelCoordinator<Key> key_channel;
 
         void poll_events(std::stop_token stop_token) {
-            while (true) {
+            while (!stop_token.stop_requested()) {
                 SDL_Event event;
                 while (SDL_PollEvent(&event)) {
                     if (stop_token.stop_requested())
@@ -70,7 +70,7 @@ namespace Chip8 {
 
     public:
         Keyboard() : poll_events_thread([this](std::stop_token token) { this->poll_events(token); }) {}
-        ~Keyboard() = default;
+        ~Keyboard() {}
 
         bool is_key_pressed(Key key) const {
             return keyboard_state[static_cast<size_t>(key)];

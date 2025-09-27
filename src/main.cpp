@@ -21,13 +21,13 @@ int main(int argc, char *argv[]) {
         chip8_file.read(program_string.data(), size);
 
         Chip8::Emulator emulator;
-        if (!emulator.load_program(program_string)) {
+        if (!emulator.load_program(program_string, true)) {
             std::cout << "ERROR: invalid program. please fix error before running again" << std::endl;
             exit(1);
         }
 
         // the user doesn't have a great way of stopping the program aside from killing the process, but oh well!
-        emulator.block_run();
+        emulator.block_run(true);
         return 0;
     } catch (const std::exception& e) {
         std::cout << "ERROR: " << e.what() << std::endl;
