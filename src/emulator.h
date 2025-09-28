@@ -598,7 +598,9 @@ namespace Chip8 {
                     next_pos = crlf + 2;
                 }
 
-                std::string line = program_text.substr(current_pos, next_pos);
+                std::string line = program_text.substr(current_pos, next_pos - current_pos);
+                if (DEBUG)
+                    std::cout << "line = " << line << std::endl;
                 if (std::ranges::all_of(line, isspace))
                     continue;
 
