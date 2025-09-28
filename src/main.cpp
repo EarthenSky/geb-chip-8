@@ -28,10 +28,7 @@ int main(int argc, char *argv[]) {
 
         // the user doesn't have a great way of stopping the program aside from killing the process, but oh well!
         emulator.block_run();
-
-        std::cout << "Press any key to exit..." << std::endl; 
-        std::string _line;
-        std::getline(std::cin, _line);
+        emulator.block_until_any_key();
         return 0;
     } catch (const std::exception& e) {
         std::cout << "ERROR: " << e.what() << std::endl;

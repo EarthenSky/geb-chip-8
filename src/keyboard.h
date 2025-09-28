@@ -25,52 +25,65 @@ namespace Chip8 {
         // true means down
         std::array<std::atomic<bool>, 16> keyboard_state;
         
-        std::jthread poll_events_thread;
-
         GebLib::Threading::ChannelCoordinator<Key> key_channel;
 
-        void poll_events(std::stop_token stop_token) {
-            while (!stop_token.stop_requested()) {
-                SDL_Event event;
-                while (SDL_PollEvent(&event)) {
-                    if (stop_token.stop_requested())
-                        return;
+    public:
+        Keyboard() {}
+        ~Keyboard() {}
 
+        /// @returns whether the event loop is probably empty. The suggestion guarantees when 
+        /// false that all events in the queue cannot be older than a few operations or a single (probably) context
+        /// switch. Thus, if false, it's safe to sleep a little.
+        bool poll_events(size_t max_events=64) {
+            SDL_Event event;
+            size_t i;
+            for (i = 0; i < max_events && SDL_PollEvent(&event); i++) {
+                if (event.type == SDL_EVENT_QUIT) {
+                    std::cout << "Exiting...\n";
+                    // TODO: should I exit safely? It's probably fine for now I bet...
+                    exit(1);
+                } else if (
+                    event.type == SDL_EVENT_KEY_DOWN
+                    || event.type == SDL_EVENT_KEY_UP
+                ) {
+                    // https://wiki.libsdl.org/SDL3/SDL_Keycode
+                    size_t key_i;
+                    auto key = event.key.key;
+                    if (key >= SDLK_0 && key <= SDLK_9) {
+                        key_i = 0x0 + (key - SDLK_0);
+                    } else if (key >= SDLK_A && key <= SDLK_F) {
+                        key_i = 0xa + (key - SDLK_A);
+                    } else {
+                        // invalid keydown doesn't lock mutex
+                        continue;
+                    }
+
+                    if (event.type == SDL_EVENT_KEY_DOWN)
+                        key_channel.send_if_requested(static_cast<Key>(key_i));
+
+                    this->keyboard_state[key_i] = (event.type == SDL_EVENT_KEY_DOWN);
+                }
+            }
+
+            return i < max_events;
+        }
+
+        void poll_until_any_keypress() {
+            SDL_Event event;
+            while (true) {
+                while (SDL_PollEvent(&event)) {
                     if (event.type == SDL_EVENT_QUIT) {
                         std::cout << "Exiting...\n";
+                        // TODO: should I exit safely? It's probably fine for now I bet...
                         exit(1);
-                    } else if (
-                        event.type == SDL_EVENT_KEY_DOWN
-                        || event.type == SDL_EVENT_KEY_UP
-                    ) {
-                        // https://wiki.libsdl.org/SDL3/SDL_Keycode
-                        size_t key_i;
-                        auto key = event.key.key;
-                        if (key >= SDLK_0 && key <= SDLK_9) {
-                            key_i = 0x0 + (key - SDLK_0);
-                        } else if (key >= SDLK_A && key <= SDLK_F) {
-                            key_i = 0xa + (key - SDLK_A);
-                        } else {
-                            // invalid keydown doesn't lock mutex
-                            continue;
-                        }
-
-                        if (event.type == SDL_EVENT_KEY_DOWN)
-                            key_channel.send_if_requested(static_cast<Key>(key_i));
-
-                        this->keyboard_state[key_i] = (event.type == SDL_EVENT_KEY_DOWN);
+                    } else if (event.type == SDL_EVENT_KEY_DOWN) {
+                        return;
                     }
                 }
 
-                // In the worst case, sleep may wait up to 15ms, which is still 60hz, so we should be fine!
-                // In the best case, we get 1000/(0.5) = 2000hz, which is super
                 std::this_thread::sleep_for(std::chrono::microseconds(500));
             }
         }
-
-    public:
-        Keyboard() : poll_events_thread([this](std::stop_token token) { this->poll_events(token); }) {}
-        ~Keyboard() {}
 
         bool is_key_pressed(Key key) const {
             return keyboard_state[static_cast<size_t>(key)];

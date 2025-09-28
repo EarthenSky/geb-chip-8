@@ -51,6 +51,8 @@ namespace Chip8 {
         std::default_random_engine prng_engine;
         std::uniform_int_distribution<unsigned int> random_u8_dist;
 
+        bool continue_executing_instructions = false;
+
         #pragma region Instructions
 
         // 0xxx
@@ -497,8 +499,6 @@ namespace Chip8 {
         }
 
     public:
-        bool continue_executing_instructions = true;
-
         Emulator() : prng_engine(rand_dev()), random_u8_dist(0, 255) {
             sound_timer.set(0);
             delay_timer.set(0);
@@ -535,23 +535,41 @@ namespace Chip8 {
             if (DEBUG)
                 std::cout << "Running program..." << std::endl;
 
-            // this->continue_executing_instructions must be modified by another thread to end execution
-            while (this->continue_executing_instructions) {
-                if (DEBUG) {
-                    std::cout << "program_counter = " << std::format("{:x}", program_counter) << std::endl;
-                    std::cout << "i_register = " << std::format("{:x}", i_register) << std::endl;
-                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                }
+            this->continue_executing_instructions = true;
 
-                // TODO: can we increment the program_counter by 2 bytes before even entering the evaluate_instruction?
-                // if so, is it equivalent? we'd save a lot of LoC for sure
-                bool should_end_execution = this->evaluate_instruction(
-                    (this->memory[this->program_counter] << 8)
-                    + this->memory[this->program_counter + 1]
-                );
-                if (should_end_execution)
-                    return;
+            std::jthread execution_thread([this](){
+                while (this->continue_executing_instructions) {
+                    if (DEBUG) {
+                        // TODO: make the string concats all atomic so we don't get weird ordering issues
+                        std::cout << "program_counter = " << std::format("{:x}", program_counter) << std::endl;
+                        std::cout << "i_register = " << std::format("{:x}", i_register) << std::endl;
+                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    }
+
+                    // TODO: can we increment the program_counter by 2 bytes before even entering the evaluate_instruction?
+                    // if so, is it equivalent? we'd save a lot of LoC for sure
+                    bool should_end_execution = this->evaluate_instruction(
+                        (this->memory[this->program_counter] << 8)
+                        + this->memory[this->program_counter + 1]
+                    );
+                    if (should_end_execution)
+                        continue_executing_instructions = false;
+                }
+            });
+
+            while (this->continue_executing_instructions) {
+                bool event_queue_probably_empty = keyboard.poll_events();
+                
+                if (event_queue_probably_empty)
+                    // In the worst case, sleep may wait up to 15ms, which is still 60hz, so we should be fine!
+                    // In the best case, we get 1000/(0.5) = 2000hz, which is super
+                    std::this_thread::sleep_for(std::chrono::microseconds(500));
             }
+        }
+
+        void block_until_any_key() {
+            std::cout << "Press any key to exit..." << std::endl;
+            keyboard.poll_until_any_keypress();
         }
 
         // treats both \r\n and \n as line breaks

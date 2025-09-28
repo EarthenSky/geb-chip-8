@@ -1184,6 +1184,9 @@ TODO: do we need to clear the screen by default?
 
 Bugs:
 - only small things like off by one errors, or bitwise operator accidents
+- Big SDL3 event handling issue!
+  - Event handling should be done on the main thread. If I'd read the documentation for [`SDL_PollEvent`](https://wiki.libsdl.org/SDL3/SDL_PollEvent), I would have notice it say "As this function may implicitly call SDL_PumpEvents(), you can only call this function in the thread that set the video mode". We can solve this by doing some small re-architecture, running instructions in a secondary thread, polling the keyboard input in the emulator thread instead. Not the most beautiful, but workable!
+  - see https://wiki.libsdl.org/SDL3/FAQDevelopment#can-i-call-sdl-event-functions-from-multiple-threads-
 
 2/2 tests down!
 
