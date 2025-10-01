@@ -1192,50 +1192,79 @@ Bugs:
 
 ### `keyboard_audio_test.chip8`
 
-// TODO: this next! Test audio AND user input at the same time.
+// TODO: this next! Test audio
 
 I really wasn't confident with the behaviour of SDL's audio latency, and since I didn't want to go platform-specific in order to get some kind of realtime thread for buffering audio, I left it with the current implementation.
 
 // ? In the end, I had to increase the sample rate so that the error/latency wasn't off by so much!  
 
+The first thing this program is testing is keyboard input. However I quickly ran into a new issue; screen flickering! Because Chip-8 programs do not have access to the frame timer, or a double buffer, they cannot ensure changes to the screen happen before the screen renders its contents. Thus, if you use the same approach as traditional games (clear the screen, re-render sprites at their new position), you get horrible flashing!
+
+However, while looking through existing Chip-8 games, it seems like flashing can be avoided! See https://youtu.be/u1f9J6odZBs?si=ICK9qISdz1dSpRL8 . How the heck did they do it? It comes from the extension of an easy idea: If it doesn't move, don't change it! If some pixels on the screen are static (like the ground), then don't clear them from the screen and write them again. Moving objects are still an issue. If we could update the entire screen at once then we'd either render the old screen twice or render the new screen as intended. This would be mostly ideal! Unfortunately, the most we can render at once is a single sprite. Thus, we can only ensure that ONE of the sprite rendering calls will be fully completed. But this is a great idea! If we can update each sprite's position with a single sprite draw then the most that the graphics can ever be out of date is the position of up to half of the objects in the screen. This is something we can plan around! Even for objects in full motion.
+
+In our example, we do this by XORing the sprite against itself only when the keyboard input changes from on to off. Thus, if nothing changes, no sprites will change. A long explanation for a simple change. Woo!
+
 ```c
 // TODO: beeps so long as any key is held down, turning off 16ms after it's let up
 
-// conditionally draw each key depending on its value
-// if keys are pressed, set beep timer to 1, loop forever and ever and ever
-
 // 0x200:
+// allocation of static variables
+0x6000 // V0 = 0x00
+0x6100 // V1 = 0x00
+0x6200 // V2 = 0x00
+0x6300 // V3 = 0x00
+0x6400 // V4 = 0x00
+0xa700 // I  = 0x700
+0xf455 // [I ..., I+4] = { V0, ..., V4 }
+
+// allocation of dynamic variables
+0x6501 // V5 = ypos = 0x01
+// 0x210 (start):
 0x6101 // V1 = 0x01
-0xf129 // I = letter_sprite[V1]
-0x6201 // V2 = xpos = 0x01
-0x6301 // V3 = ypos = 0x01
-0xe1a1 // skip next if key[V1] is up
-0xd235 // draw_sprite(V2, V3, 5)
+0x6401 // V4 = xpos = 0x01
+0x222a // toggle_sprite_if_key_changed()
 
 0x6102 // V1 = 0x02
-0xf129 // I = letter_sprite[V1]
-0x6206 // V2 = xpos = 0x06
-0xe1a1 // skip next if key[V1] is up
-0xd235 // draw_sprite(V2, V3, 5)
+0x6406 // V4 = xpos = 0x06
+0x222a // toggle_sprite_if_key_changed()
 
 0x6103 // V1 = 0x03
-0xf129 // I = letter_sprite[V1]
-0x620b // V2 = xpos = 0x0b
-0xe1a1 // skip next if key[V1] is up
-0xd235 // draw_sprite(V2, V3, 5)
+0x640b // V4 = xpos = 0x0b
+0x222a // toggle_sprite_if_key_changed()
 
 0x6104 // V1 = 0x04
-0xf129 // I = letter_sprite[V1]
-0x62f0 // V2 = xpos = 0xf0
-0xe1a1 // skip next if key[V1] is up
-0xd235 // draw_sprite(V2, V3, 5)
+0x6410 // V4 = xpos = 0x10
+0x222a // toggle_sprite_if_key_changed()
 
 // some programs loop forever and never end
-0x1200 // goto 0x200
+0x1210 // goto start
+
+// 0x22a:
+// if key state differs from memory, draw sprite, then update the stored key
+// int toggle_sprite_if_key_changed(V1 = key, V4 = xpos, V5 = ypos)
+// mutable (V0, V2, I, memory)
+0xa700 // I = 0x700
+0xf11e // I += V1
+0xf065 // V0 = memory[I]
+0x6200 // V2 = key_state = 0
+0xe1a1 // skip next if key[V1] is up
+0x6201 // V2 = 1
+0x5020 // skip next if V0 == V2
+0x123c // goto print
+0x00ee // ret
+// 0x23c (print):
+0xf129 // I = letter_sprite[V1]
+0xd455 // draw_sprite(V4, V5, 5)
+0xa700 // I = 0x700
+0xf11e // I += V1
+0x8020 // V0 = V2
+0xf055 // memory[I] = V0
+0x00ee // ret
 ```
 
 Bugs:
 - events were being dropped for some reason!
+- [flickering](https://chip8.fandom.com/wiki/Flicker#:~:text=Chip8%20and%20SuperChip%20programs%20can,essentially%20a%20free%20running%20loop.) can be solved by careful program structure
 
 ### `animation_test.chip8`
 
@@ -1272,6 +1301,18 @@ Looks good!
 # ACT II
 
 ## a simple assembler language?
+
+Writing these programs as just bytes and comments shows how many bugs are solved by having a single source of truth. I would prefer to omit how many times I updated my comments instead of the actual bytes and was confused when nothing changed.
+
+[1st] This strongly motivates a language to keep the program structured. So that I can better remember what all the instructions do rather than keep looking them up all the time. However, this is only the first level improvement.
+[2nd] The second level improvement will be when we can do things like add labels that automatically compute what address they're at so we can jump to them, or static variables that automatically assign memory locations and that the compiler can notice when our program and memory code overlaps!
+[3rd] Huh, I wonder what third level improvements could be? Program synthesis? Superoptimization? Formal verification? If 1st level is syntactic, and 2nd level is automated computation / codegen, then the 3rd level as program queries makes more sense! What the hell could levels past 4 even be? Adapting to changes maybe? I guess it depends on the context, since I expect programs to be relatively static.
+
+Revised levels:
+
+[1st] Syntactic changes for **memory**
+[2nd] Codegen and computation for **automation**
+[3rd] Program queries for **understanding**
 
 // TODO: what do people, do
 

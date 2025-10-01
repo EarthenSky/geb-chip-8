@@ -246,7 +246,9 @@ namespace Chip8 {
                     auto ypos = (ul_ypos + row_i) % Display::SCREEN_HEIGHT;
                     
                     bool before = this->display.buffer[xpos + ypos * Display::SCREEN_WIDTH];
-                    bool after = (this->display.buffer[xpos + ypos * Display::SCREEN_WIDTH] ^= (row & (0x80 >> bit_i)) != 0);
+                    bool after = (
+                        this->display.buffer[xpos + ypos * Display::SCREEN_WIDTH] ^= ((row & (0x80 >> bit_i)) != 0)
+                    );
                     if (before && !after)
                         this->gp_registers[0xf] = 1;
                 }
