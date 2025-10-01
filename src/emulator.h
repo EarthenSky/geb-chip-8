@@ -465,6 +465,9 @@ namespace Chip8 {
             } else if ((instruction & 0xf0ff) == 0xe09e) {
                 u4 x = get_nibble(instruction, 1);
                 this->skip_if_key_press(x);
+            } else if ((instruction & 0xf0ff) == 0xe0a1) {
+                u4 x = get_nibble(instruction, 1);
+                this->skip_if_not_key_press(x);
             } else if ((instruction & 0xf0ff) == 0xf007) {
                 u4 x = get_nibble(instruction, 1);
                 this->load_from_delay_timer(x);
@@ -493,7 +496,8 @@ namespace Chip8 {
                 u4 x = get_nibble(instruction, 1);
                 this->load_mem_to_reg(x);
             } else {
-                throw std::runtime_error(std::format("Hit unknown instruction: {:x}", instruction));
+                std::cerr << std::format("Hit unknown instruction: {:x}", instruction) << std::endl;
+                throw std::runtime_error("Hit unknown instruction");
             }
             return false;
         }

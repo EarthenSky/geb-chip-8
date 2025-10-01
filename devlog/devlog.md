@@ -1145,8 +1145,6 @@ This next example tests function calls, random numbers, jumps, and conditionals.
 
 2. No labels. This is a problem with our small interpreter that converts our text into bytes. It's not possible to place a procedure at an arbitrary memory location without manually padding it. This unfortunately means small changes can required lots of hard coded addresses to be modified! I'll look at implementing some utilities for this in the future.
 
-TODO: do we need to clear the screen by default?
-
 ```c
 // 0x200:
 0x6201 // V2 = xpos = 0x01
@@ -1192,17 +1190,56 @@ Bugs:
 
 > I'm not entirely sure how to measure whether the RNG is good enough, although it seems to be uniform enough given a small sample of 50 digits.
 
-### `audio_test.chip8`
+### `keyboard_audio_test.chip8`
 
-// TODO: this next! test audio AND user input at the same time.
+// TODO: this next! Test audio AND user input at the same time.
 
 I really wasn't confident with the behaviour of SDL's audio latency, and since I didn't want to go platform-specific in order to get some kind of realtime thread for buffering audio, I left it with the current implementation.
 
 // ? In the end, I had to increase the sample rate so that the error/latency wasn't off by so much!  
 
-```sh
+```c
+// TODO: beeps so long as any key is held down, turning off 16ms after it's let up
 
+// conditionally draw each key depending on its value
+// if keys are pressed, set beep timer to 1, loop forever and ever and ever
+
+// 0x200:
+0x6101 // V1 = 0x01
+0xf129 // I = letter_sprite[V1]
+0x6201 // V2 = xpos = 0x01
+0x6301 // V3 = ypos = 0x01
+0xe1a1 // skip next if key[V1] is up
+0xd235 // draw_sprite(V2, V3, 5)
+
+0x6102 // V1 = 0x02
+0xf129 // I = letter_sprite[V1]
+0x6206 // V2 = xpos = 0x06
+0xe1a1 // skip next if key[V1] is up
+0xd235 // draw_sprite(V2, V3, 5)
+
+0x6103 // V1 = 0x03
+0xf129 // I = letter_sprite[V1]
+0x620b // V2 = xpos = 0x0b
+0xe1a1 // skip next if key[V1] is up
+0xd235 // draw_sprite(V2, V3, 5)
+
+0x6104 // V1 = 0x04
+0xf129 // I = letter_sprite[V1]
+0x62f0 // V2 = xpos = 0xf0
+0xe1a1 // skip next if key[V1] is up
+0xd235 // draw_sprite(V2, V3, 5)
+
+// some programs loop forever and never end
+0x1200 // goto 0x200
 ```
+
+Bugs:
+- events were being dropped for some reason!
+
+### `animation_test.chip8`
+
+
 
 ### `full_coverage.chip8`
 

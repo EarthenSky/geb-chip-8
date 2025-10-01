@@ -39,12 +39,11 @@ namespace Chip8 {
             size_t i;
             for (i = 0; i < max_events && SDL_PollEvent(&event); i++) {
                 if (event.type == SDL_EVENT_QUIT) {
-                    std::cout << "Exiting...\n";
-                    // TODO: should I exit safely? It's probably fine for now I bet...
+                    std::cout << "Got SDL exit event. Exiting...\n";
                     exit(1);
                 } else if (
-                    event.type == SDL_EVENT_KEY_DOWN
-                    || event.type == SDL_EVENT_KEY_UP
+                    (event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_KEY_UP)
+                    && !event.key.repeat
                 ) {
                     // https://wiki.libsdl.org/SDL3/SDL_Keycode
                     size_t key_i;
@@ -61,6 +60,7 @@ namespace Chip8 {
                     if (event.type == SDL_EVENT_KEY_DOWN)
                         key_channel.send_if_requested(static_cast<Key>(key_i));
 
+                    std::cout << "GOT INPUT. key = " << key_i << " key_down = " << (event.type == SDL_EVENT_KEY_DOWN) << std::endl; 
                     this->keyboard_state[key_i] = (event.type == SDL_EVENT_KEY_DOWN);
                 }
             }
@@ -73,8 +73,7 @@ namespace Chip8 {
             while (true) {
                 while (SDL_PollEvent(&event)) {
                     if (event.type == SDL_EVENT_QUIT) {
-                        std::cout << "Exiting...\n";
-                        // TODO: should I exit safely? It's probably fine for now I bet...
+                        std::cout << "Got SDL exit event. Exiting...\n";
                         exit(1);
                     } else if (event.type == SDL_EVENT_KEY_DOWN) {
                         return;
