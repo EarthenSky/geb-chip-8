@@ -28,9 +28,6 @@ namespace Chip8 {
         GebLib::Threading::ChannelCoordinator<Key> key_channel;
 
     public:
-        Keyboard() {}
-        ~Keyboard() {}
-
         /// @returns whether the event loop is probably empty. The suggestion guarantees when 
         /// false that all events in the queue cannot be older than a few operations or a single (probably) context
         /// switch. Thus, if false, it's safe to sleep a little.

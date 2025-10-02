@@ -1192,11 +1192,7 @@ Bugs:
 
 ### `keyboard_audio_test.chip8`
 
-// TODO: this next! Test audio
-
-I really wasn't confident with the behaviour of SDL's audio latency, and since I didn't want to go platform-specific in order to get some kind of realtime thread for buffering audio, I left it with the current implementation.
-
-// ? In the end, I had to increase the sample rate so that the error/latency wasn't off by so much!  
+I really wasn't confident with the behaviour of SDL's audio latency, and since I didn't want to go platform-specific in order to get some kind of realtime thread for buffering audio, I left it with the current implementation. In the end, the latency was still really small, awesome! I didn't have to dig into SDL3 code or anything too.
 
 The first thing this program is testing is keyboard input. However I quickly ran into a new issue; screen flickering! Because Chip-8 programs do not have access to the frame timer, or a double buffer, they cannot ensure changes to the screen happen before the screen renders its contents. Thus, if you use the same approach as traditional games (clear the screen, re-render sprites at their new position), you get horrible flashing!
 
@@ -1205,8 +1201,6 @@ However, while looking through existing Chip-8 games, it seems like flashing can
 In our example, we do this by XORing the sprite against itself only when the keyboard input changes from on to off. Thus, if nothing changes, no sprites will change. A long explanation for a simple change. Woo!
 
 ```c
-// TODO: beeps so long as any key is held down, turning off 16ms after it's let up
-
 // 0x200:
 // allocation of static variables
 0x6000 // V0 = 0x00
@@ -1220,39 +1214,48 @@ In our example, we do this by XORing the sprite against itself only when the key
 // allocation of dynamic variables
 0x6501 // V5 = ypos = 0x01
 // 0x210 (start):
+0x6600 // V6 = any_key_up = 0x00
+
 0x6101 // V1 = 0x01
 0x6401 // V4 = xpos = 0x01
-0x222a // toggle_sprite_if_key_changed()
+0x2232 // toggle_sprite_if_key_changed()
 
 0x6102 // V1 = 0x02
 0x6406 // V4 = xpos = 0x06
-0x222a // toggle_sprite_if_key_changed()
+0x2232 // toggle_sprite_if_key_changed()
 
 0x6103 // V1 = 0x03
 0x640b // V4 = xpos = 0x0b
-0x222a // toggle_sprite_if_key_changed()
+0x2232 // toggle_sprite_if_key_changed()
 
 0x6104 // V1 = 0x04
 0x6410 // V4 = xpos = 0x10
-0x222a // toggle_sprite_if_key_changed()
+0x2232 // toggle_sprite_if_key_changed()
+
+// 5 * 16ms of latency after ending press
+0x6001 // V0 = 0x01
+0x3600 // skip next if V6 == 0x00
+0xf018 // ST = V0
 
 // some programs loop forever and never end
 0x1210 // goto start
 
-// 0x22a:
+// 0x232:
 // if key state differs from memory, draw sprite, then update the stored key
-// int toggle_sprite_if_key_changed(V1 = key, V4 = xpos, V5 = ypos)
-// mutable (V0, V2, I, memory)
+// int toggle_sprite_if_key_changed(V1 = key, V4 = xpos, V5 = ypos, V6 = num_keys_down)
+// mutable (V0, V2, V6, I, memory)
 0xa700 // I = 0x700
 0xf11e // I += V1
 0xf065 // V0 = memory[I]
 0x6200 // V2 = key_state = 0
 0xe1a1 // skip next if key[V1] is up
 0x6201 // V2 = 1
+0x3200 // skip next if V2 == 0
+0x7601 // V6 += 1
 0x5020 // skip next if V0 == V2
-0x123c // goto print
+0x1248 // goto print
 0x00ee // ret
-// 0x23c (print):
+// 0x248 (print):
 0xf129 // I = letter_sprite[V1]
 0xd455 // draw_sprite(V4, V5, 5)
 0xa700 // I = 0x700
@@ -1265,6 +1268,8 @@ In our example, we do this by XORing the sprite against itself only when the key
 Bugs:
 - events were being dropped for some reason!
 - [flickering](https://chip8.fandom.com/wiki/Flicker#:~:text=Chip8%20and%20SuperChip%20programs%20can,essentially%20a%20free%20running%20loop.) can be solved by careful program structure
+- Misunderstood SDL_CreateAudioStream
+  - I assumed that the `src_spec` and `dst_spec` parameters referred to input (microphone) and output (speaker/headphone). Of course, after looking around I realized that `SDL_AudioStream` is much more generic, and can do all sorts of cool stuff!
 
 ### `animation_test.chip8`
 

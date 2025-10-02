@@ -8,10 +8,9 @@
 #include "types.h"
 #include "geblib.h"
 
-#include "display.h"
+#include "device.h"
 #include "keyboard.h"
 #include "timer.h"
-#include "speaker.h"
 
 namespace Chip8 {
     template<bool DEBUG = false>
@@ -23,13 +22,11 @@ namespace Chip8 {
         static const size_t INSTRUCTION_SIZE = 2;
         static const uint8_t SPRITE_WIDTH = 8;
 
-        Display display;
+        Device device;
         Keyboard keyboard;
 
         Timer60hz sound_timer;
         Timer60hz delay_timer;
-
-        // Speaker speaker;
 
         std::array<uint8_t, 4096> memory;
 
@@ -62,8 +59,8 @@ namespace Chip8 {
 
         // 00e0
         void cls() {
-            std::ranges::fill(this->display.buffer, false);
-            this->display.render_buffer();
+            std::ranges::fill(this->device.display.buffer, false);
+            this->device.display.render_buffer();
             this->program_counter += INSTRUCTION_SIZE;
         }
 
@@ -242,12 +239,12 @@ namespace Chip8 {
                 uint8_t row = this->memory[i_register + row_i];
                 for (size_t bit_i = 0; bit_i < SPRITE_WIDTH; bit_i++) {
                     // sprites wrap around the display
-                    auto xpos = (ul_xpos + bit_i) % Display::SCREEN_WIDTH;
-                    auto ypos = (ul_ypos + row_i) % Display::SCREEN_HEIGHT;
+                    auto xpos = (ul_xpos + bit_i) % SCREEN_WIDTH;
+                    auto ypos = (ul_ypos + row_i) % SCREEN_HEIGHT;
                     
-                    bool before = this->display.buffer[xpos + ypos * Display::SCREEN_WIDTH];
+                    bool before = this->device.display.buffer[xpos + ypos * SCREEN_WIDTH];
                     bool after = (
-                        this->display.buffer[xpos + ypos * Display::SCREEN_WIDTH] ^= ((row & (0x80 >> bit_i)) != 0)
+                        this->device.display.buffer[xpos + ypos * SCREEN_WIDTH] ^= ((row & (0x80 >> bit_i)) != 0)
                     );
                     if (before && !after)
                         this->gp_registers[0xf] = 1;
@@ -256,9 +253,9 @@ namespace Chip8 {
 
             if (DEBUG) {
                 std::cout << "NEW DISPLAY STATE" << std::endl;
-                for (size_t y = 0; y < Display::SCREEN_HEIGHT; y++) {
-                    for (size_t x = 0; x < Display::SCREEN_WIDTH; x++) {
-                        std::cout << this->display.buffer[y * Display::SCREEN_WIDTH + x];
+                for (size_t y = 0; y < SCREEN_HEIGHT; y++) {
+                    for (size_t x = 0; x < SCREEN_WIDTH; x++) {
+                        std::cout << this->device.display.buffer[y * SCREEN_WIDTH + x];
                     }
                     std::cout << std::endl;
                 }
@@ -266,7 +263,7 @@ namespace Chip8 {
 
             // TODO: is there a fancy way to do this & the 0xf register thingy using only a single thread (& std::transform or similar)?
 
-            this->display.render_buffer();
+            this->device.display.render_buffer();
             this->program_counter += INSTRUCTION_SIZE;
         }
 
@@ -505,7 +502,7 @@ namespace Chip8 {
         }
 
     public:
-        Emulator() : prng_engine(rand_dev()), random_u8_dist(0, 255) {
+        Emulator() : device(sound_timer), prng_engine(rand_dev()), random_u8_dist(0, 255) {
             sound_timer.set(0);
             delay_timer.set(0);
 
@@ -564,7 +561,7 @@ namespace Chip8 {
             });
 
             while (this->continue_executing_instructions) {
-                bool event_queue_probably_empty = keyboard.poll_events();
+                bool event_queue_probably_empty = this->keyboard.poll_events();
                 
                 if (event_queue_probably_empty)
                     // In the worst case, sleep may wait up to 15ms, which is still 60hz, so we should be fine!
@@ -575,7 +572,7 @@ namespace Chip8 {
 
         void block_until_any_key() {
             std::cout << "Press any key to exit..." << std::endl;
-            keyboard.poll_until_any_keypress();
+            this->keyboard.poll_until_any_keypress();
         }
 
         // treats both \r\n and \n as line breaks
