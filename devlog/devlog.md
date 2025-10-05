@@ -1273,14 +1273,32 @@ Bugs:
 
 ### `animation_test.chip8`
 
+Next is an animation test which uses the delay timer and blinks a single letter on and off.
 
+```c
+// 0x200:
+0x6101 // V1 = 0x01
+0xf129 // I = letter_sprite[V1]
+0x6201 // V2 = xpos = 0x01
+0x6301 // V3 = ypos = 0x01
+0xd235 // draw_sprite(V2, V3, 5)
+0x640c // V4 = 0x0c (200ms)
+0xf415 // delay_timer = V4
+// 0x20e:
+0xf407 // V4 = delay_timer
+0x3400 // skip next if V4 == 0x00
+0x120e // goto 0x20e
+0x1200 // goto 0x200
+```
 
 ### `full_coverage.chip8`
 
-Now, we just need a program that manages to use every operation, but actually use it!
+And finally, we need a program that evaluates every single operation! Technically it would be great if our tests could give us full source coverage, but just running every instruction once is good enough for me!
+
+The idea with the following test is that it should only display the digit 0 if all instructions behave as expected.
 
 ```sh
-
+TODO: me!
 ```
 
 ## The Final Exam

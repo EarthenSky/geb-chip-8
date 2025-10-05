@@ -31,7 +31,6 @@ namespace Chip8 {
             }
         }
         void set(uint8_t new_value) {
-            std::cout << "SET TIMER = " << (size_t)new_value << std::endl;
             this->_value = new_value;
             this->timestamp = std::chrono::steady_clock::now();
         }
