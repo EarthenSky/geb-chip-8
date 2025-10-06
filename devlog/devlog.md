@@ -1291,19 +1291,20 @@ Next is an animation test which uses the delay timer and blinks a single letter 
 0x1200 // goto 0x200
 ```
 
-### `full_coverage.chip8`
+### `everything.chip8`
 
 And finally, we need a program that evaluates every single operation! Technically it would be great if our tests could give us full source coverage, but just running every instruction once is good enough for me!
 
-The idea with the following test is that it should only display the digit 0 if all instructions behave as expected.
+The following test should display the digit 0 if all instructions behave as expected. I've placed a `*` in the comment after each key instruction we're testing.
 
 ```sh
 TODO: me!
+
 ```
 
 ## The Final Exam
 
-We're done! This means it's time to start running some programs real programs. Luckily for us, there have been a few game jams full of programs written in Chip8 for us play with.
+We're done! This means it's time to start running some programs real programs. Luckily for us, there have been a few game jams full of programs written in Chip-8 for us play with.
 
 // TODO: this
 
