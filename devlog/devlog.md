@@ -1293,13 +1293,17 @@ Next is an animation test which uses the delay timer and blinks a single letter 
 
 ### `everything.chip8`
 
-And finally, we need a program that evaluates every single operation! Technically it would be great if our tests could give us full source coverage, but just running every instruction once is good enough for me!
+And finally, we need a program that evaluates the rest of the operations. Technically it would be great if our tests could give us full source coverage, but just running every instruction once is good enough for me!
 
-The following test should display the digit 0 if all instructions behave as expected. I've placed a `*` in the comment after each key instruction we're testing.
+For this test, I want it to display the digit 0 if all instructions behave as expected. If you press the `0` key, it will display a second `0` (otherwise the program will end). I've placed a `*` in the comment after each key instruction we're testing. Instructions are mostly in order.
+
+We skip a few instructions because we've tested them before or they are hard to visually inspect or otherwise quantify:
+- `ex9e` and `exa1`, because they involve keyboard input and I want this test to not require interaction. We test `exa1` above anyways (and I gave the code for `ex9e` an extra check too)
+- `fx07` and `fx15`, because it's not easy to visually inspect timing, but we test them both in `animation_test.chip8`.
+- `fx18` because it's hard to evaluate sound, and we test it in `keyboard_audio_test.chip8`.
 
 ```sh
 TODO: me!
-
 ```
 
 ## The Final Exam
