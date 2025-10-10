@@ -197,19 +197,17 @@
 // draw the number 0
 0xd124 // * draw_sprite(I, V1, V2, bytes(4))
 
-// TODO: finish this one
-// 0x362:
+// 0x360:
+0xa360 // I = 0x360
 0x6007 // V0 = 0x04
-0xf01e // * I = 0x360 + V0
+0xf01e // * I += V0
 0xf165 // V0 = memory[I], V1 = memory[I+1]
 0x30f0 // skip next if V0 == 0xf0
-// TODO: everything after this
-// 0x326:
-0x1326 // (dead end)
+0x1600 // goto 0x600
 0x3120 // skip next if V1 == 0x1e
-// 0x32a:
-0x132a // (dead end)
+0x1600 // (clear screen dead end)
 
+// TODO: fx33 next
 
 // TODO: do fx0a last, because reasons.
 
