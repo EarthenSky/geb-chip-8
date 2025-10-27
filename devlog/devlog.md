@@ -1295,10 +1295,10 @@ Next is an animation test which uses the delay timer and blinks a single letter 
 
 And finally, we need a program that evaluates the rest of the operations. Technically it would be great if our tests could give us full source coverage, but just running every instruction once is good enough for me!
 
-For this test, I want it to display the digit 0 if all instructions behave as expected. If you press the `0` key, it will display a second `0` (otherwise the program will end). I've placed a `*` in the comment after each key instruction we're testing. Instructions are mostly in order.
+For this test, I want it to display the `0` digit if all instructions behave as expected. If you press the `0` key, it will display a second `0`, otherwise the screen will be cleared. I've placed a `*` in the comment after each key instruction we're testing. Instructions are mostly in order.
 
 We skip a few instructions because we've tested them before or they are hard to visually inspect or otherwise quantify:
-- `ex9e` and `exa1`, because they involve keyboard input and I want this test to not require interaction. We test `exa1` above anyways (and I gave the code for `ex9e` an extra check too)
+- `ex9e` and `exa1`, because they involve keyboard input and I want this test to not require excessive interaction. We test `exa1` in `keyboard_audio_test.chip8` anyways. I also gave the code for `ex9e` an extra look through just in case!
 - `fx07` and `fx15`, because it's not easy to visually inspect timing, but we test them both in `animation_test.chip8`.
 - `fx18` because it's hard to evaluate sound, and we test it in `keyboard_audio_test.chip8`.
 
@@ -1308,11 +1308,13 @@ TODO: me!
 
 ## The Final Exam
 
-We're done! This means it's time to start running some programs real programs. Luckily for us, there have been a few game jams full of programs written in Chip-8 for us play with.
+We're done! This means it's time to try running a real programs. Luckily for us, there have been a few game jams full of programs written in Chip-8 for us to choose from.
 
 // TODO: this
 
 ## We're not done yet, are we?
+
+// TODO: create some collapsible cards with notes on these concepts
 
 No way, we've still got a lot more to do! Let's start by consulting the list.
 
@@ -1327,6 +1329,8 @@ No way, we've still got a lot more to do! Let's start by consulting the list.
 Looks good!
 
 # ACT II
+
+// TODO: turn this into a TODO list instead of actually doing any of them
 
 ## a simple assembler language?
 
