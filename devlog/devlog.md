@@ -1328,6 +1328,8 @@ No way, we've still got a lot more to do! Let's start by consulting the list.
 
 Looks good!
 
+// TODO: finish all the other TODOs
+
 # ACT II
 
 // TODO: turn this into a TODO list instead of actually doing any of them
